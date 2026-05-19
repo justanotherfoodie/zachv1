@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+{% block title %}Theory Tools — Zach V1{% endblock %}
+{% block page_title %}Glass Theory Tools{% endblock %}
+
+{% block content %}
+<div x-data="glassTools()" style="display:flex;flex-direction:column;gap:16px;">
+
+  <!-- ── Composition input (shared) ───────────────────────────────────── -->
+  <div class="zcard">
+    <div class="zcard-body">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+        <div style="font-size:15px;font-weight:600;">Composition Input</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <select x-model="inputType" class="zinput" style="width:auto;padding:5px 10px;font-size:12px;">
+            <option value="wt_pct">wt%</option>
+            <option value="mol_pct">mol%</option>
+          </select>
+          <button @click="normComp()"           class="zbtn zbtn-ghost zbtn-xs">Normalise</button>
+          <button @click="loadPreset('sodalime')"    class="zbtn zbtn-ghost zbtn-xs">Soda-lime</button>
+          <button @click="loadPreset('borosilicate')" class="zbtn zbtn-ghost zbtn-xs">Borosilicate</button>
+          <button @click="clearComp()"          class="zbtn zbtn-ghost zbtn-xs" style="color:#ff453a;">Clear</button>
+        </div>
+      </div>
+
+      <div class="oxide-grid">
+        {% for oxide in oxides %}
+        <div class="oxide-row">
+          <label class="oxide-label">{{ oxide }}</label>
+          <input type="number" min="0" max="100" step="0.1" placeholder="0"
+            :value="comp['{{ oxide }}'] || ''"
+            @input="comp['{{ oxide }}'] = parseFloat($event.target.value) || 0"
+            class="zinput oxide-input" style="padding:4px 8px;font-size:12px;">
+        </div>
+        {% endfor %}
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;">
+        <span style="font-size:12px;color:#86868b;">
+          Sum:
+          <strong :style="Math.abs(compSum-100)<2?'color:#30d158':'color:#ffd60a'" x-text="compSum.toFixed(2)+'%'"></strong>
+        </span>
+        <button @click="runAll()" class="zbtn zbtn-primary zbtn-sm" :disabled="loading">
+          <span x-show="loading" class="zspin" style="width:12px;height:12px;"></span>
+          Run All Analyses
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Results grid ──────────────────────────────────────────────────── -->
+  <div x-show="result" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
+
+    <!-- NBO/T -->
+    <div class="zcard">
+      <div class="zcard-body">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">NBO/T — Network Connectivity</div>
+        <div style="font-size:48px;font-weight:700;color:#2997ff;text-align:center;margin:16px 0;"
+             x-text="result?.nbo_t?.nbo_t ?? '—'"></div>
+        <div style="font-size:13px;text-align:center;font-weight:500;margin-bottom:12px;" x-text="result?.nbo_t?.connectivity"></div>
+        <div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:10px;margin-bottom:8px;"></div>
+        <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#86868b;">Total O (mol)</span>
+            <span style="font-family:monospace;" x-text="result?.nbo_t?.total_O_mol"></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#86868b;">Tetrahedral cations</span>
+            <span style="font-family:monospace;" x-text="result?.nbo_t?.total_tet_mol"></span>
+          </div>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:#555;line-height:1.6;">
+          NBO/T &lt; 0: fully polymerised Q4 network.<br>
+          NBO/T ≈ 2: typical commercial glass (Q2).<br>
+          NBO/T = 4: orthosilicate — isolated tetrahedra.
+        </div>
+      </div>
+    </div>
+
+    <!-- Optical Basicity -->
+    <div class="zcard">
+      <div class="zcard-body">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Optical Basicity (Λ)</div>
+        <div style="font-size:48px;font-weight:700;color:#30d158;text-align:center;margin:16px 0;"
+             x-text="result?.optical_basicity?.optical_basicity ?? '—'"></div>
+        <div style="font-size:13px;text-align:center;font-weight:500;margin-bottom:12px;" x-text="result?.optical_basicity?.character"></div>
+        <div x-show="result?.optical_basicity?.missing_oxides?.length > 0"
+             style="margin-bottom:8px;font-size:11px;color:#ffd60a;">
+          Missing Λ values for: <span x-text="result?.optical_basicity?.missing_oxides?.join(', ')"></span>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:#555;line-height:1.6;">
+          Duffy-Ingram model. Λ = Σxᵢnᵢλᵢ / Σxᵢnᵢ.<br>
+          Λ &lt; 0.5: acidic. 0.5–0.7: weakly basic. &gt; 0.85: strongly basic.
+        </div>
+      </div>
+    </div>
+
+    <!-- Topological Constraints -->
+    <div class="zcard">
+      <div class="zcard-body">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Topological Constraint Theory</div>
+        <div style="font-size:48px;font-weight:700;color:#bf5af2;text-align:center;margin:16px 0;"
+             x-text="result?.topological?.n_constraints_total ?? '—'"></div>
+        <div style="font-size:13px;text-align:center;font-weight:500;margin-bottom:12px;" x-text="result?.topological?.rigidity_regime"></div>
+        <div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:10px;margin-bottom:8px;"></div>
+        <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#86868b;">Mean coordination</span>
+            <span style="font-family:monospace;" x-text="result?.topological?.mean_coordination"></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#86868b;">Bond-stretching</span>
+            <span style="font-family:monospace;" x-text="result?.topological?.n_bond_stretching"></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#86868b;">Bond-bending</span>
+            <span style="font-family:monospace;" x-text="result?.topological?.n_bond_bending"></span>
+          </div>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:#555;line-height:1.6;">
+          Phillips-Thorpe theory (per network cation).<br>
+          Pure SiO₂ ≈ 7. Soda-lime ≈ 5.5. High modifier &lt; 3.
+        </div>
+      </div>
+    </div>
+
+    <!-- Network former classification -->
+    <div class="zcard">
+      <div class="zcard-body">
+        <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Network Former Classification</div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#30d158;margin-bottom:6px;">Formers (BS &gt; 350 kJ/mol)</div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;">
+              <template x-for="[ox, v] in Object.entries(result?.network_formers?.formers ?? {})">
+                <span class="zbadge zbadge-green" x-text="`${ox}: ${v}%`"></span>
+              </template>
+              <span x-show="!Object.keys(result?.network_formers?.formers??{}).length" style="font-size:12px;color:#555;">—</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#ffd60a;margin-bottom:6px;">Intermediates (250–350 kJ/mol)</div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;">
+              <template x-for="[ox, v] in Object.entries(result?.network_formers?.intermediates ?? {})">
+                <span class="zbadge zbadge-yellow" x-text="`${ox}: ${v}%`"></span>
+              </template>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#ff453a;margin-bottom:6px;">Modifiers (&lt; 250 kJ/mol)</div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;">
+              <template x-for="[ox, v] in Object.entries(result?.network_formers?.modifiers ?? {})">
+                <span class="zbadge zbadge-red" x-text="`${ox}: ${v}%`"></span>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Linear additive estimates -->
+    <div class="zcard">
+      <div class="zcard-body">
+        <div style="font-size:13px;font-weight:600;margin-bottom:14px;">Additive Property Estimates</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="background:#1a1a1a;border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#86868b;margin-bottom:6px;">Density</div>
+            <div style="font-size:24px;font-weight:700;color:#2997ff;" x-text="result?.estimates?.density_est_g_cm3 ? result.estimates.density_est_g_cm3+' g/cm³' : '—'"></div>
+          </div>
+          <div style="background:#1a1a1a;border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#86868b;margin-bottom:6px;">Tg estimate</div>
+            <div style="font-size:24px;font-weight:700;color:#30d158;" x-text="result?.estimates?.Tg_est_degC ? result.estimates.Tg_est_degC+' °C' : '—'"></div>
+          </div>
+          <div style="background:#1a1a1a;border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#86868b;margin-bottom:6px;">CTE</div>
+            <div style="font-size:18px;font-weight:700;color:#bf5af2;" x-text="result?.estimates?.CTE_est_1e7_per_degC ? result.estimates.CTE_est_1e7_per_degC+' ×10⁻⁷/°C' : '—'"></div>
+          </div>
+        </div>
+        <p style="font-size:11px;color:#555;margin-top:10px;" x-text="result?.estimates?.note"></p>
+      </div>
+    </div>
+
+    <!-- Composition radar -->
+    <div class="zcard">
+      <div class="zcard-body">
+        <div style="font-size:13px;font-weight:600;margin-bottom:14px;">Composition Radar</div>
+        <div id="tools-radar" style="height:200px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Batch Calculator ──────────────────────────────────────────────── -->
+  <div class="zcard">
+    <div class="zcard-body">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+        <div style="font-size:15px;font-weight:600;">Batch Calculator</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:12px;color:#86868b;">Batch size (g)</span>
+          <input x-model.number="batchSize" type="number" min="1" max="100000" step="100"
+            class="zinput" style="width:90px;padding:5px 10px;font-size:12px;">
+          <button @click="calcBatch()" class="zbtn zbtn-primary zbtn-sm" :disabled="loading">Calculate</button>
+        </div>
+      </div>
+
+      <div x-show="batchResult" style="overflow-x:auto;">
+        <table class="ztable">
+          <thead><tr><th>Raw Material</th><th style="text-align:right;">Mass (g)</th><th style="text-align:right;">%</th></tr></thead>
+          <tbody>
+            <template x-for="[mat, mass] in Object.entries(batchResult?.batch_weights_g ?? {})">
+              <tr>
+                <td x-text="mat"></td>
+                <td style="font-family:monospace;text-align:right;" x-text="mass.toFixed(2)"></td>
+                <td style="text-align:right;color:#86868b;font-size:12px;"
+                    x-text="(mass/batchResult.total_batch_g*100).toFixed(1)+'%'"></td>
+              </tr>
+            </template>
+          </tbody>
+          <tfoot>
+            <tr style="font-weight:700;border-top:1px solid rgba(255,255,255,0.1);">
+              <td>Total batch</td>
+              <td style="font-family:monospace;text-align:right;" x-text="batchResult?.total_batch_g?.toFixed(2)"></td>
+              <td style="text-align:right;font-size:12px;color:#ffd60a;" x-text="'LOI: '+batchResult?.loi_g?.toFixed(2)+'g ('+batchResult?.loi_pct+'%)'"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Unit Converter ───────────────────────────────────────────────── -->
+  <div class="zcard">
+    <div class="zcard-body">
+      <div style="font-size:15px;font-weight:600;margin-bottom:14px;">wt% ↔ mol% Converter</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button @click="convert('wt_to_mol')" class="zbtn zbtn-secondary zbtn-sm">wt% → mol%</button>
+        <button @click="convert('mol_to_wt')" class="zbtn zbtn-secondary zbtn-sm">mol% → wt%</button>
+      </div>
+      <div x-show="convertedComp" style="overflow-x:auto;">
+        <table class="ztable">
+          <thead><tr><th>Oxide</th><th>Input</th><th>Converted</th></tr></thead>
+          <tbody>
+            <template x-for="[ox, v] in Object.entries(convertedComp ?? {})">
+              <tr>
+                <td style="font-family:monospace;" x-text="ox"></td>
+                <td style="font-family:monospace;color:#86868b;" x-text="(comp[ox]||0).toFixed(3)"></td>
+                <td style="font-family:monospace;font-weight:600;color:#2997ff;" x-text="v.toFixed(3)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TOOL_PRESETS = {
+  sodalime:    {SiO2:72.5,Na2O:12.8,CaO:9.1,MgO:3.9,Al2O3:1.1,K2O:0.6},
+  borosilicate:{SiO2:80.5,B2O3:11.8,Na2O:4.0,Al2O3:2.5,K2O:1.2},
+};
+
+function glassTools() {
+  return {
+    comp: {SiO2:72.5,Na2O:12.8,CaO:9.1,MgO:3.9,Al2O3:1.1,K2O:0.6},
+    inputType: 'wt_pct',
+    batchSize: 1000,
+    result: null, batchResult: null, convertedComp: null,
+    loading: false,
+
+    get compSum() { return Object.values(this.comp).reduce((a,b)=>a+(b||0),0); },
+
+    loadPreset(name) { this.comp = {...TOOL_PRESETS[name]}; },
+    normComp() {
+      const s=this.compSum; if(!s) return;
+      for(const k in this.comp) this.comp[k]=parseFloat((this.comp[k]*100/s).toFixed(3));
+    },
+    clearComp() { this.comp={}; this.result=null; },
+
+    async runAll() {
+      this.loading=true;
+      const comp=Object.fromEntries(Object.entries(this.comp).filter(([,v])=>v>0));
+      const res=await fetch('/api/tools/analyse',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({composition:comp})
+      });
+      const j=await res.json();
+      if(j.ok){ this.result=j.data; this.drawRadar(comp); }
+      this.loading=false;
+    },
+
+    async calcBatch() {
+      const comp=Object.fromEntries(Object.entries(this.comp).filter(([,v])=>v>0));
+      const res=await fetch('/api/tools/batch',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({composition:comp,batch_size_g:this.batchSize})
+      });
+      const j=await res.json();
+      if(j.ok) this.batchResult=j.data;
+    },
+
+    async convert(dir) {
+      const comp=Object.fromEntries(Object.entries(this.comp).filter(([,v])=>v>0));
+      const res=await fetch('/api/tools/convert',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({composition:comp,direction:dir})
+      });
+      const j=await res.json();
+      if(j.ok) this.convertedComp=j.data;
+    },
+
+    drawRadar(comp) {
+      const oxides=Object.keys(comp);
+      const values=Object.values(comp);
+      Plotly.react('tools-radar',[{
+        type:'scatterpolar',fill:'toself',mode:'lines',
+        r:[...values,values[0]],theta:[...oxides,oxides[0]],
+        line:{color:'#2997ff',width:2},fillcolor:'rgba(41,151,255,0.1)',
+      }],{
+        polar:{radialaxis:{visible:true,range:[0,Math.max(...values)*1.1],gridcolor:'rgba(255,255,255,0.06)'},bgcolor:'transparent'},
+        paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+        font:{color:'#86868b',size:10},
+        margin:{l:40,r:40,t:30,b:30},
+        showlegend:false,
+      },{responsive:true,displayModeBar:false});
+    }
+  };
+}
+</script>
+{% endblock %}

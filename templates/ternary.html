@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block title %}Ternary Diagram — Zach V1{% endblock %}
+{% block page_title %}Ternary Property Diagram{% endblock %}
+
+{% block content %}
+<div x-data="ternaryPlot()">
+
+  <!-- Controls row -->
+  <div class="zcard" style="margin-bottom:16px;">
+    <div class="zcard-body">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;align-items:end;">
+
+        <div>
+          <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Oxide 1 (bottom-left)</div>
+          <select x-model="ox1" class="zinput">
+            {% for oxide in oxides %}<option>{{ oxide }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Oxide 2 (bottom-right)</div>
+          <select x-model="ox2" class="zinput">
+            {% for oxide in oxides %}<option>{{ oxide }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Oxide 3 (apex)</div>
+          <select x-model="ox3" class="zinput">
+            {% for oxide in oxides %}<option>{{ oxide }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Property (colour)</div>
+          <select x-model="propName" class="zinput">
+            <option value="density">Density (g/cm³)</option>
+            <option value="tg_celsius">Tg (°C)</option>
+            <option value="thermal_expansion_coeff">CTE (×10⁻⁷/°C)</option>
+            <option value="refractive_index_nD">Refractive index nD</option>
+            <option value="liquidus_temp">Liquidus temp (°C)</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Composition type</div>
+          <select x-model="compType" class="zinput">
+            <option value="mol_pct">mol%</option>
+            <option value="wt_pct">wt%</option>
+          </select>
+        </div>
+        <div style="align-self:end;">
+          <button @click="plot()" class="zbtn zbtn-primary" style="width:100%;" :disabled="loading">
+            <span x-show="loading" class="zspin" style="width:14px;height:14px;"></span>
+            Plot Diagram
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Your composition overlay -->
+  <div class="zcard" style="margin-bottom:16px;" x-data="{open:false}">
+    <div class="zcard-body" style="padding:14px 24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" @click="open=!open">
+        <div style="font-size:13px;font-weight:600;">📍 Overlay my composition</div>
+        <span style="font-size:12px;color:#555;" x-text="open?'▲':'▼'"></span>
+      </div>
+      <div x-show="open" style="margin-top:12px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:11px;color:#86868b;margin-bottom:4px;" x-text="`${$root.ox1} (%)`"></div>
+          <input x-model.number="$root.myV1" type="number" min="0" max="100" step="0.1" class="zinput" style="width:90px;padding:5px 8px;font-size:12px;">
+        </div>
+        <div>
+          <div style="font-size:11px;color:#86868b;margin-bottom:4px;" x-text="`${$root.ox2} (%)`"></div>
+          <input x-model.number="$root.myV2" type="number" min="0" max="100" step="0.1" class="zinput" style="width:90px;padding:5px 8px;font-size:12px;">
+        </div>
+        <div>
+          <div style="font-size:11px;color:#86868b;margin-bottom:4px;" x-text="`${$root.ox3} (%)`"></div>
+          <input x-model.number="$root.myV3" type="number" min="0" max="100" step="0.1" class="zinput" style="width:90px;padding:5px 8px;font-size:12px;">
+        </div>
+        <button @click="$root.addOverlay()" class="zbtn zbtn-secondary zbtn-sm">Add marker</button>
+        <button @click="$root.clearOverlay()" class="zbtn zbtn-ghost zbtn-sm">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Plot area -->
+  <div style="display:grid;grid-template-columns:1fr 300px;gap:16px;">
+
+    <div class="zcard">
+      <div class="zcard-body">
+        <div x-show="!plotted && !loading" style="display:flex;align-items:center;justify-content:center;height:480px;flex-direction:column;gap:12px;color:#444;">
+          <div style="font-size:48px;">△</div>
+          <div style="font-size:14px;">Select three oxides and a property, then click Plot Diagram</div>
+        </div>
+        <div x-show="loading" style="display:flex;align-items:center;justify-content:center;height:480px;flex-direction:column;gap:12px;">
+          <span class="zspin" style="width:40px;height:40px;"></span>
+          <div style="font-size:13px;color:#86868b;">Querying <span x-text="nTotal.toLocaleString()"></span> glasses…</div>
+        </div>
+        <div x-show="plotted" id="ternary-chart" style="height:520px;"></div>
+      </div>
+    </div>
+
+    <!-- Stats + info panel -->
+    <div style="display:flex;flex-direction:column;gap:12px;">
+
+      <div class="zcard" x-show="stats">
+        <div class="zcard-body">
+          <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Dataset Summary</div>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;">
+            <div style="display:flex;justify-content:space-between;">
+              <span style="color:#86868b;">Data points</span>
+              <span style="font-weight:600;" x-text="stats?.n?.toLocaleString()"></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+              <span style="color:#86868b;">Min</span>
+              <span style="font-family:monospace;" x-text="stats?.min?.toFixed(4)"></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+              <span style="color:#86868b;">Mean</span>
+              <span style="font-family:monospace;" x-text="stats?.mean?.toFixed(4)"></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+              <span style="color:#86868b;">Median</span>
+              <span style="font-family:monospace;" x-text="stats?.median?.toFixed(4)"></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+              <span style="color:#86868b;">Max</span>
+              <span style="font-family:monospace;" x-text="stats?.max?.toFixed(4)"></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+              <span style="color:#86868b;">System</span>
+              <span style="font-size:11px;" x-text="`${ox1}–${ox2}–${ox3}`"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="zcard">
+        <div class="zcard-body">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;">How to read this chart</div>
+          <div style="font-size:12px;color:#86868b;line-height:1.7;">
+            Each point represents one glass composition in the SciGlass database.
+            The colour shows the measured <strong style="color:#f5f5f7;" x-text="propName.replace(/_/g,' ')"></strong>.
+            <br><br>
+            Hover over a point to see the exact composition and value.
+            Click a point to open the glass detail page.
+            <br><br>
+            Use <strong style="color:#f5f5f7;">"Overlay my composition"</strong> to mark where your target glass sits relative to the literature data.
+          </div>
+        </div>
+      </div>
+
+      <div class="zcard" x-show="clickedGlass">
+        <div class="zcard-body">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Selected Glass</div>
+          <div style="font-size:12px;color:#86868b;margin-bottom:8px;" x-text="`Glass #${clickedGlass?.id}`"></div>
+          <div style="font-size:12px;margin-bottom:6px;">
+            <span x-text="`${ox1}: ${clickedGlass?.v1?.toFixed(1)}%`"></span><br>
+            <span x-text="`${ox2}: ${clickedGlass?.v2?.toFixed(1)}%`"></span><br>
+            <span x-text="`${ox3}: ${clickedGlass?.v3?.toFixed(1)}%`"></span>
+          </div>
+          <div style="font-size:14px;font-weight:700;color:#2997ff;margin-bottom:10px;"
+               x-text="`${propName.replace(/_/g,' ')}: ${clickedGlass?.pv?.toFixed(4)}`"></div>
+          <a :href="`/glass/${clickedGlass?.id}`" class="zbtn zbtn-primary zbtn-xs" style="text-decoration:none;">
+            View full glass →
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div x-show="error" class="zalert zalert-error" style="margin-top:12px;" x-text="error"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function ternaryPlot() {
+  return {
+    ox1:'SiO2', ox2:'Na2O', ox3:'CaO',
+    propName:'density', compType:'mol_pct',
+    myV1:'', myV2:'', myV3:'',
+    overlays:[],
+    plotted:false, loading:false, error:'',
+    stats:null, clickedGlass:null, nTotal:0,
+    rawData:[],
+
+    async plot() {
+      if (this.ox1===this.ox2||this.ox1===this.ox3||this.ox2===this.ox3) {
+        this.error='Please select three different oxides.'; return;
+      }
+      this.loading=true; this.error=''; this.stats=null; this.clickedGlass=null;
+      const res=await fetch('/api/ternary',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ox1:this.ox1,ox2:this.ox2,ox3:this.ox3,
+                             prop_name:this.propName,comp_type:this.compType})
+      });
+      const j=await res.json();
+      this.loading=false;
+      if(!j.ok){ this.error=j.error; return; }
+      this.rawData=j.data;
+      this.nTotal=j.data.length;
+      if(!j.data.length){ this.error='No data found for this system.'; return; }
+      this.plotted=true;
+      this._computeStats(j.data);
+      this._draw(j.data);
+    },
+
+    _computeStats(data) {
+      const vals=data.map(d=>d.pv).filter(v=>v!=null).sort((a,b)=>a-b);
+      const n=vals.length;
+      this.stats={
+        n, min:vals[0], max:vals[n-1],
+        mean:vals.reduce((a,b)=>a+b,0)/n,
+        median:n%2===0?(vals[n/2-1]+vals[n/2])/2:vals[Math.floor(n/2)],
+      };
+    },
+
+    _draw(data) {
+      const ids=data.map(d=>d.id);
+      const traces=[{
+        type:'scatterternary',
+        mode:'markers',
+        name:'SciGlass data',
+        a:data.map(d=>d.v3),  // apex
+        b:data.map(d=>d.v1),  // bottom-left
+        c:data.map(d=>d.v2),  // bottom-right
+        text:data.map(d=>`Glass #${d.id}<br>${this.ox1}: ${d.v1?.toFixed(1)}%<br>${this.ox2}: ${d.v2?.toFixed(1)}%<br>${this.ox3}: ${d.v3?.toFixed(1)}%<br>${this.propName}: ${d.pv?.toFixed(4)}`),
+        hoverinfo:'text',
+        marker:{
+          size:5,
+          color:data.map(d=>d.pv),
+          colorscale:'Viridis',
+          showscale:true,
+          colorbar:{title:{text:this.propName.replace(/_/g,' '),side:'right'},
+                    thickness:12,len:0.7,tickfont:{size:10,color:'#86868b'},
+                    titlefont:{size:11,color:'#86868b'}},
+          opacity:0.75,
+          line:{width:0},
+        },
+        customdata:ids,
+      }];
+
+      // Overlay markers
+      if(this.overlays.length) {
+        traces.push({
+          type:'scatterternary', mode:'markers+text',
+          name:'My compositions',
+          a:this.overlays.map(o=>o.v3),
+          b:this.overlays.map(o=>o.v1),
+          c:this.overlays.map(o=>o.v2),
+          text:this.overlays.map(o=>o.label),
+          textposition:'top center',
+          marker:{size:14,color:'#ff453a',symbol:'star',
+                  line:{color:'#fff',width:1.5}},
+        });
+      }
+
+      const layout={
+        paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+        font:{color:'#86868b',size:11},
+        margin:{l:20,r:20,t:30,b:20},
+        ternary:{
+          bgcolor:'rgba(255,255,255,0.02)',
+          aaxis:{title:this.ox3,color:'#86868b',gridcolor:'rgba(255,255,255,0.08)',tickfont:{size:10}},
+          baxis:{title:this.ox1,color:'#86868b',gridcolor:'rgba(255,255,255,0.08)',tickfont:{size:10}},
+          caxis:{title:this.ox2,color:'#86868b',gridcolor:'rgba(255,255,255,0.08)',tickfont:{size:10}},
+        },
+        showlegend:false,
+      };
+
+      Plotly.newPlot('ternary-chart',traces,layout,{responsive:true,displayModeBar:false});
+
+      // Click handler → open glass detail
+      const self=this;
+      document.getElementById('ternary-chart').on('plotly_click',function(evt){
+        const pt=evt.points[0];
+        if(!pt) return;
+        const idx=pt.pointIndex;
+        self.clickedGlass=data[idx];
+      });
+    },
+
+    addOverlay() {
+      const v1=parseFloat(this.myV1)||0;
+      const v2=parseFloat(this.myV2)||0;
+      const v3=parseFloat(this.myV3)||0;
+      if(v1+v2+v3 <= 0) return;
+      this.overlays.push({v1,v2,v3,label:`My (${v1}/${v2}/${v3})`});
+      if(this.plotted) this._draw(this.rawData);
+    },
+    clearOverlay() { this.overlays=[]; if(this.plotted) this._draw(this.rawData); },
+  };
+}
+</script>
+{% endblock %}

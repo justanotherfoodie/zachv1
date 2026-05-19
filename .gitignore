@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Databases (not committed — too large / contains private data)
+*.db
+*.sqlite
+*.sqlite3
+
+# Trained ML models (regenerated on first run)
+models_cache/
+
+# Logs
+*.log
+server.log
+server_err.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment / secrets
+.env
+.env.*
+config_local.py
+
+# Flask session / instance
+instance/
+flask_session/

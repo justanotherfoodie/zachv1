@@ -1,0 +1,684 @@
+{% extends "base.html" %}
+{% block title %}Scatter &amp; Histogram — Zach V1{% endblock %}
+{% block page_title %}Composition–Property Explorer{% endblock %}
+
+{% block content %}
+<div x-data="vizApp()">
+
+  <!-- Tab switcher -->
+  <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <button @click="tab='scatter'"
+            :style="tab==='scatter'?'background:#2997ff;color:#fff;':'background:rgba(255,255,255,0.06);color:#f5f5f7;'"
+            style="padding:8px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;">
+      Scatter Plot
+    </button>
+    <button @click="tab='histogram'"
+            :style="tab==='histogram'?'background:#2997ff;color:#fff;':'background:rgba(255,255,255,0.06);color:#f5f5f7;'"
+            style="padding:8px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;">
+      Property Histogram
+    </button>
+    <button @click="tab='correlation'"
+            :style="tab==='correlation'?'background:#2997ff;color:#fff;':'background:rgba(255,255,255,0.06);color:#f5f5f7;'"
+            style="padding:8px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;">
+      Correlation Matrix
+    </button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ SCATTER TAB ═══ -->
+  <div x-show="tab==='scatter'">
+    <div class="zcard" style="margin-bottom:16px;">
+      <div class="zcard-body">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;align-items:end;">
+
+          <!-- X axis type -->
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">X axis type</div>
+            <select x-model="sc.xType" class="zinput">
+              <option value="oxide">Oxide content (%)</option>
+              <option value="property">Property</option>
+            </select>
+          </div>
+
+          <!-- X axis name — oxide -->
+          <div x-show="sc.xType==='oxide'">
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Oxide (X)</div>
+            <select x-model="sc.xName" class="zinput">
+              {% for oxide in oxides %}<option>{{ oxide }}</option>{% endfor %}
+            </select>
+          </div>
+
+          <!-- X axis name — property -->
+          <div x-show="sc.xType==='property'">
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Property (X)</div>
+            <select x-model="sc.xName" class="zinput">
+              <option value="density">Density (g/cm³)</option>
+              <option value="tg_celsius">Tg (°C)</option>
+              <option value="thermal_expansion_coeff">CTE (×10⁻⁷/°C)</option>
+              <option value="refractive_index_nD">Refractive index nD</option>
+              <option value="liquidus_temp">Liquidus temp (°C)</option>
+            </select>
+          </div>
+
+          <!-- Y axis property -->
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Property (Y)</div>
+            <select x-model="sc.yProp" class="zinput">
+              <option value="density">Density (g/cm³)</option>
+              <option value="tg_celsius">Tg (°C)</option>
+              <option value="thermal_expansion_coeff">CTE (×10⁻⁷/°C)</option>
+              <option value="refractive_index_nD">Refractive index nD</option>
+              <option value="liquidus_temp">Liquidus temp (°C)</option>
+            </select>
+          </div>
+
+          <!-- Color by -->
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Color by (optional)</div>
+            <select x-model="sc.colorProp" class="zinput">
+              <option value="">— none —</option>
+              <option value="density">Density</option>
+              <option value="tg_celsius">Tg</option>
+              <option value="thermal_expansion_coeff">CTE</option>
+              <option value="refractive_index_nD">Refractive index</option>
+              <option value="liquidus_temp">Liquidus temp</option>
+            </select>
+          </div>
+
+          <!-- Comp type -->
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Composition type</div>
+            <select x-model="sc.compType" class="zinput">
+              <option value="mol_pct">mol%</option>
+              <option value="wt_pct">wt%</option>
+            </select>
+          </div>
+
+          <!-- Point limit -->
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Max points</div>
+            <select x-model.number="sc.limit" class="zinput">
+              <option value="1000">1 000</option>
+              <option value="3000" selected>3 000</option>
+              <option value="5000">5 000</option>
+              <option value="10000">10 000</option>
+            </select>
+          </div>
+
+          <div style="align-self:end;">
+            <button @click="fetchScatter()" class="zbtn zbtn-primary" style="width:100%;" :disabled="sc.loading">
+              <span x-show="sc.loading" class="zspin" style="width:14px;height:14px;"></span>
+              Plot
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scatter plot area -->
+    <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;">
+      <div class="zcard">
+        <div class="zcard-body">
+          <div x-show="!sc.plotted && !sc.loading" style="display:flex;align-items:center;justify-content:center;height:460px;flex-direction:column;gap:12px;color:#444;">
+            <div style="font-size:48px;">⊡</div>
+            <div style="font-size:14px;">Select axes and click Plot</div>
+          </div>
+          <div x-show="sc.loading" style="display:flex;align-items:center;justify-content:center;height:460px;flex-direction:column;gap:12px;">
+            <span class="zspin" style="width:40px;height:40px;"></span>
+            <div style="font-size:13px;color:#86868b;">Fetching data…</div>
+          </div>
+          <div x-show="sc.plotted" id="scatter-chart" style="height:480px;"></div>
+        </div>
+      </div>
+
+      <!-- Stats panel -->
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div class="zcard" x-show="sc.stats">
+          <div class="zcard-body">
+            <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Statistics</div>
+            <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;">
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Points</span>
+                <span style="font-weight:600;" x-text="sc.stats?.n?.toLocaleString()"></span>
+              </div>
+              <div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:8px;font-size:11px;font-weight:600;color:#86868b;">X axis</div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Min</span>
+                <span style="font-family:monospace;" x-text="sc.stats?.xMin?.toFixed(3)"></span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Max</span>
+                <span style="font-family:monospace;" x-text="sc.stats?.xMax?.toFixed(3)"></span>
+              </div>
+              <div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:8px;font-size:11px;font-weight:600;color:#86868b;">Y axis</div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Min</span>
+                <span style="font-family:monospace;" x-text="sc.stats?.yMin?.toFixed(3)"></span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Mean</span>
+                <span style="font-family:monospace;" x-text="sc.stats?.yMean?.toFixed(3)"></span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Max</span>
+                <span style="font-family:monospace;" x-text="sc.stats?.yMax?.toFixed(3)"></span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Pearson r</span>
+                <span style="font-family:monospace;font-weight:700;"
+                      :style="Math.abs(sc.stats?.r||0)>0.7?'color:#30d158':Math.abs(sc.stats?.r||0)>0.4?'color:#ffd60a':'color:#86868b'"
+                      x-text="sc.stats?.r?.toFixed(3)"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="zcard">
+          <div class="zcard-body">
+            <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Tips</div>
+            <div style="font-size:12px;color:#86868b;line-height:1.7;">
+              <strong style="color:#f5f5f7;">Box-select</strong> or <strong style="color:#f5f5f7;">lasso</strong> points on the chart to zoom into a region.
+              <br><br>
+              <strong style="color:#f5f5f7;">Pearson r</strong> measures linear correlation: |r| &gt; 0.7 = strong (green), 0.4–0.7 = moderate (yellow).
+              <br><br>
+              A random sample of up to <span x-text="sc.limit.toLocaleString()"></span> points is drawn from the full SciGlass database.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ HISTOGRAM TAB ═══ -->
+  <div x-show="tab==='histogram'">
+    <div class="zcard" style="margin-bottom:16px;">
+      <div class="zcard-body">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;align-items:end;">
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Property</div>
+            <select x-model="hi.prop" class="zinput">
+              <option value="density">Density (g/cm³)</option>
+              <option value="tg_celsius">Tg (°C)</option>
+              <option value="thermal_expansion_coeff">CTE (×10⁻⁷/°C)</option>
+              <option value="refractive_index_nD">Refractive index nD</option>
+              <option value="liquidus_temp">Liquidus temp (°C)</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Bins</div>
+            <select x-model.number="hi.bins" class="zinput">
+              <option value="30">30</option>
+              <option value="50" selected>50</option>
+              <option value="80">80</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Composition type</div>
+            <select x-model="hi.compType" class="zinput">
+              <option value="mol_pct">mol%</option>
+              <option value="wt_pct">wt%</option>
+            </select>
+          </div>
+          <!-- Overlay my value -->
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Overlay my value</div>
+            <input x-model.number="hi.myVal" type="number" step="any" class="zinput" placeholder="e.g. 2.45" style="padding:6px 10px;">
+          </div>
+          <div style="align-self:end;">
+            <button @click="fetchHistogram()" class="zbtn zbtn-primary" style="width:100%;" :disabled="hi.loading">
+              <span x-show="hi.loading" class="zspin" style="width:14px;height:14px;"></span>
+              Plot
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;">
+      <div class="zcard">
+        <div class="zcard-body">
+          <div x-show="!hi.plotted && !hi.loading" style="display:flex;align-items:center;justify-content:center;height:460px;flex-direction:column;gap:12px;color:#444;">
+            <div style="font-size:48px;">▬</div>
+            <div style="font-size:14px;">Select a property and click Plot</div>
+          </div>
+          <div x-show="hi.loading" style="display:flex;align-items:center;justify-content:center;height:460px;flex-direction:column;gap:12px;">
+            <span class="zspin" style="width:40px;height:40px;"></span>
+            <div style="font-size:13px;color:#86868b;">Loading…</div>
+          </div>
+          <div x-show="hi.plotted" id="histogram-chart" style="height:480px;"></div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div class="zcard" x-show="hi.stats">
+          <div class="zcard-body">
+            <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Distribution</div>
+            <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;">
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Count</span>
+                <span style="font-weight:600;" x-text="hi.stats?.n?.toLocaleString()"></span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Min</span>
+                <span style="font-family:monospace;" x-text="hi.stats?.min?.toFixed(4)"></span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">P25</span>
+                <span style="font-family:monospace;" x-text="hi.stats?.p25?.toFixed(4)"></span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Median</span>
+                <span style="font-family:monospace;font-weight:600;" x-text="hi.stats?.median?.toFixed(4)"></span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">P75</span>
+                <span style="font-family:monospace;" x-text="hi.stats?.p75?.toFixed(4)"></span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Max</span>
+                <span style="font-family:monospace;" x-text="hi.stats?.max?.toFixed(4)"></span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Mean</span>
+                <span style="font-family:monospace;" x-text="hi.stats?.mean?.toFixed(4)"></span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#86868b;">Std dev</span>
+                <span style="font-family:monospace;" x-text="hi.stats?.std?.toFixed(4)"></span>
+              </div>
+              <template x-if="hi.myVal!==''">
+                <div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:8px;">
+                  <div style="display:flex;justify-content:space-between;">
+                    <span style="color:#86868b;">My percentile</span>
+                    <span style="font-weight:700;color:#2997ff;" x-text="hi.stats?.myPct?.toFixed(1)+'%'"></span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <div class="zcard">
+          <div class="zcard-body">
+            <div style="font-size:13px;font-weight:600;margin-bottom:10px;">How to use</div>
+            <div style="font-size:12px;color:#86868b;line-height:1.7;">
+              See how common (or rare) a property value is across the SciGlass database.
+              <br><br>
+              Enter <strong style="color:#f5f5f7;">your target value</strong> to see where it falls in the distribution — shown as a red dashed line, with your percentile rank calculated automatically.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ CORRELATION TAB ═══ -->
+  <div x-show="tab==='correlation'">
+    <div class="zcard" style="margin-bottom:16px;">
+      <div class="zcard-body">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Property Correlation Matrix</div>
+        <div style="font-size:12px;color:#86868b;margin-bottom:14px;">
+          Pearson correlation between all 5 main properties across the SciGlass database. Darker = stronger correlation.
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Composition type</div>
+            <select x-model="cr.compType" class="zinput" style="width:140px;">
+              <option value="mol_pct">mol%</option>
+              <option value="wt_pct">wt%</option>
+            </select>
+          </div>
+          <div style="align-self:end;">
+            <button @click="fetchCorrelation()" class="zbtn zbtn-primary" :disabled="cr.loading">
+              <span x-show="cr.loading" class="zspin" style="width:14px;height:14px;"></span>
+              Compute
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="zcard">
+      <div class="zcard-body">
+        <div x-show="!cr.plotted && !cr.loading" style="display:flex;align-items:center;justify-content:center;height:420px;flex-direction:column;gap:12px;color:#444;">
+          <div style="font-size:48px;">⊞</div>
+          <div style="font-size:14px;">Click Compute to generate the correlation matrix</div>
+        </div>
+        <div x-show="cr.loading" style="display:flex;align-items:center;justify-content:center;height:420px;flex-direction:column;gap:12px;">
+          <span class="zspin" style="width:40px;height:40px;"></span>
+          <div style="font-size:13px;color:#86868b;">Computing pairwise correlations…</div>
+        </div>
+        <div x-show="cr.plotted" id="correlation-chart" style="height:480px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div x-show="error" class="zalert zalert-error" style="margin-top:12px;" x-text="error"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PROP_LABELS = {
+  density:                 'Density (g/cm³)',
+  tg_celsius:              'Tg (°C)',
+  thermal_expansion_coeff: 'CTE (×10⁻⁷/°C)',
+  refractive_index_nD:     'Refractive index nD',
+  liquidus_temp:           'Liquidus temp (°C)',
+};
+
+function vizApp() {
+  return {
+    tab: 'scatter',
+    error: '',
+
+    sc: {
+      xType:'oxide', xName:'SiO2', yProp:'density', colorProp:'',
+      compType:'mol_pct', limit:3000,
+      loading:false, plotted:false, stats:null,
+    },
+
+    hi: {
+      prop:'density', bins:50, compType:'mol_pct', myVal:'',
+      loading:false, plotted:false, stats:null,
+    },
+
+    cr: {
+      compType:'mol_pct',
+      loading:false, plotted:false,
+    },
+
+    // ── Scatter ──────────────────────────────────────────────────────────────
+    async fetchScatter() {
+      this.error='';
+      this.sc.loading=true;
+      const body = {
+        x_type:    this.sc.xType,
+        x_name:    this.sc.xName,
+        y_prop:    this.sc.yProp,
+        comp_type: this.sc.compType,
+        limit:     this.sc.limit,
+      };
+      if(this.sc.colorProp) body.color_prop = this.sc.colorProp;
+
+      const res = await fetch('/api/scatter',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body),
+      });
+      const j = await res.json();
+      this.sc.loading=false;
+      if(!j.ok){ this.error=j.error; return; }
+      if(!j.data.length){ this.error='No data found for this combination.'; return; }
+      this.sc.plotted=true;
+      this._drawScatter(j.data);
+    },
+
+    _drawScatter(data) {
+      const xs = data.map(d=>d.x);
+      const ys = data.map(d=>d.y);
+      const xLabel = this.sc.xType==='oxide'
+        ? `${this.sc.xName} (%)`
+        : (PROP_LABELS[this.sc.xName]||this.sc.xName);
+      const yLabel = PROP_LABELS[this.sc.yProp]||this.sc.yProp;
+
+      const trace = {
+        type:'scatter', mode:'markers',
+        x: xs, y: ys,
+        text: data.map(d=>`Glass #${d.id}<br>${xLabel}: ${d.x?.toFixed(2)}<br>${yLabel}: ${d.y?.toFixed(4)}`),
+        hoverinfo:'text',
+        marker:{
+          size: 4,
+          opacity: 0.65,
+          line: {width:0},
+          color: this.sc.colorProp && data[0]?.c!=null
+            ? data.map(d=>d.c)
+            : '#2997ff',
+          ...(this.sc.colorProp && data[0]?.c!=null ? {
+            colorscale:'Viridis', showscale:true,
+            colorbar:{
+              title:{text: PROP_LABELS[this.sc.colorProp]||this.sc.colorProp, side:'right'},
+              thickness:12, len:0.7,
+              tickfont:{size:10,color:'#86868b'},
+              titlefont:{size:11,color:'#86868b'},
+            },
+          } : {}),
+        },
+        customdata: data.map(d=>d.id),
+      };
+
+      const layout = {
+        paper_bgcolor:'transparent', plot_bgcolor:'rgba(255,255,255,0.02)',
+        font:{color:'#86868b', size:11},
+        margin:{l:60,r:20,t:20,b:55},
+        xaxis:{
+          title:{text:xLabel, font:{size:12,color:'#86868b'}},
+          gridcolor:'rgba(255,255,255,0.07)', zerolinecolor:'rgba(255,255,255,0.12)',
+          color:'#86868b',
+        },
+        yaxis:{
+          title:{text:yLabel, font:{size:12,color:'#86868b'}},
+          gridcolor:'rgba(255,255,255,0.07)', zerolinecolor:'rgba(255,255,255,0.12)',
+          color:'#86868b',
+        },
+        showlegend:false,
+        dragmode:'select',
+      };
+
+      Plotly.newPlot('scatter-chart',[trace],layout,{responsive:true,displayModeBar:true,
+        modeBarButtonsToRemove:['toImage','sendDataToCloud']});
+
+      // Stats
+      const n = xs.length;
+      const xSorted = [...xs].sort((a,b)=>a-b);
+      const ySorted = [...ys].sort((a,b)=>a-b);
+      const yMean = ys.reduce((a,b)=>a+b,0)/n;
+      // Pearson r
+      const xMean = xs.reduce((a,b)=>a+b,0)/n;
+      let num=0, sdx=0, sdy=0;
+      for(let i=0;i<n;i++){
+        num += (xs[i]-xMean)*(ys[i]-yMean);
+        sdx += (xs[i]-xMean)**2;
+        sdy += (ys[i]-yMean)**2;
+      }
+      const r = sdx>0&&sdy>0 ? num/Math.sqrt(sdx*sdy) : 0;
+
+      this.sc.stats = {
+        n, r,
+        xMin: xSorted[0], xMax: xSorted[n-1],
+        yMin: ySorted[0], yMean, yMax: ySorted[n-1],
+      };
+
+      // Click → link
+      document.getElementById('scatter-chart').on('plotly_click', evt=>{
+        const pt = evt.points[0];
+        if(pt?.customdata) window.open(`/glass/${pt.customdata}`,'_blank');
+      });
+    },
+
+    // ── Histogram ─────────────────────────────────────────────────────────────
+    async fetchHistogram() {
+      this.error='';
+      this.hi.loading=true;
+      // Re-use scatter endpoint with x=property, y=same property to get values
+      const res = await fetch('/api/scatter',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          x_type: 'property', x_name: this.hi.prop,
+          y_prop: this.hi.prop,
+          comp_type: this.hi.compType,
+          limit: 10000,
+        }),
+      });
+      const j = await res.json();
+      this.hi.loading=false;
+      if(!j.ok){ this.error=j.error; return; }
+      if(!j.data.length){ this.error='No data found.'; return; }
+      const vals = j.data.map(d=>d.x).filter(v=>v!=null);
+      this.hi.plotted=true;
+      this._drawHistogram(vals);
+    },
+
+    _drawHistogram(vals) {
+      const sorted = [...vals].sort((a,b)=>a-b);
+      const n = sorted.length;
+      const mean = sorted.reduce((a,b)=>a+b,0)/n;
+      const variance = sorted.reduce((s,v)=>s+(v-mean)**2,0)/n;
+      const std = Math.sqrt(variance);
+      const p25 = sorted[Math.floor(n*0.25)];
+      const median = n%2===0?(sorted[n/2-1]+sorted[n/2])/2:sorted[Math.floor(n/2)];
+      const p75 = sorted[Math.floor(n*0.75)];
+
+      // Percentile of myVal
+      let myPct = null;
+      const mv = parseFloat(this.hi.myVal);
+      if(!isNaN(mv) && this.hi.myVal!=='') {
+        const below = sorted.filter(v=>v<=mv).length;
+        myPct = (below/n)*100;
+      }
+      this.hi.stats = {n, min:sorted[0], p25, median, p75, max:sorted[n-1], mean, std, myPct};
+
+      const label = PROP_LABELS[this.hi.prop]||this.hi.prop;
+      const traces = [{
+        type:'histogram',
+        x: vals,
+        nbinsx: this.hi.bins,
+        marker:{
+          color:'rgba(41,151,255,0.7)',
+          line:{color:'rgba(41,151,255,0.9)',width:0.5},
+        },
+        name: label,
+        hovertemplate: '%{x:.4f}: %{y} glasses<extra></extra>',
+      }];
+
+      // Overlay lines
+      const shapes = [];
+      const annotations = [];
+
+      // Median line
+      shapes.push({type:'line',x0:median,x1:median,y0:0,y1:1,yref:'paper',
+        line:{color:'#30d158',width:1.5,dash:'dot'}});
+      annotations.push({x:median,y:0.97,yref:'paper',text:'Median',
+        showarrow:false,font:{size:10,color:'#30d158'},xanchor:'left'});
+
+      // My value line
+      if(myPct!==null) {
+        shapes.push({type:'line',x0:mv,x1:mv,y0:0,y1:1,yref:'paper',
+          line:{color:'#ff453a',width:2,dash:'dash'}});
+        annotations.push({x:mv,y:0.89,yref:'paper',text:`My value (${myPct.toFixed(1)}%)`,
+          showarrow:false,font:{size:10,color:'#ff453a'},xanchor:'left'});
+      }
+
+      const layout = {
+        paper_bgcolor:'transparent', plot_bgcolor:'rgba(255,255,255,0.02)',
+        font:{color:'#86868b',size:11},
+        margin:{l:55,r:20,t:20,b:55},
+        xaxis:{
+          title:{text:label,font:{size:12,color:'#86868b'}},
+          gridcolor:'rgba(255,255,255,0.07)', color:'#86868b',
+        },
+        yaxis:{
+          title:{text:'Count',font:{size:12,color:'#86868b'}},
+          gridcolor:'rgba(255,255,255,0.07)', color:'#86868b',
+        },
+        shapes, annotations,
+        showlegend:false,
+        bargap:0.02,
+      };
+
+      Plotly.newPlot('histogram-chart',traces,layout,{responsive:true,displayModeBar:false});
+    },
+
+    // ── Correlation matrix ────────────────────────────────────────────────────
+    async fetchCorrelation() {
+      this.error='';
+      this.cr.loading=true;
+
+      const props = ['density','tg_celsius','thermal_expansion_coeff','refractive_index_nD','liquidus_temp'];
+      const LIMIT = 5000;
+      // Fetch all pairs using scatter endpoint for each unique pair
+      const results = {};
+      for(const p of props) results[p]=[];
+
+      // Fetch each property's values independently using x=prop, y=prop trick
+      const fetches = await Promise.all(props.map(p=>
+        fetch('/api/scatter',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({x_type:'property',x_name:p,y_prop:p,
+                               comp_type:this.cr.compType,limit:LIMIT}),
+        }).then(r=>r.json())
+      ));
+
+      // Build a map: glass_id → {prop: val}
+      const glassMap = {};
+      props.forEach((p,i)=>{
+        if(fetches[i].ok) {
+          fetches[i].data.forEach(d=>{
+            if(!glassMap[d.id]) glassMap[d.id]={};
+            glassMap[d.id][p]=d.x;
+          });
+        }
+      });
+
+      // Glasses that have ALL 5 properties
+      const allGlasses = Object.values(glassMap).filter(g=>props.every(p=>g[p]!=null));
+      this.cr.loading=false;
+
+      if(allGlasses.length < 10){
+        this.error='Not enough glasses with all 5 properties for correlation.';
+        return;
+      }
+
+      // Compute Pearson correlation matrix
+      function pearson(a,b){
+        const n=a.length;
+        const ma=a.reduce((s,v)=>s+v,0)/n, mb=b.reduce((s,v)=>s+v,0)/n;
+        let num=0,sa=0,sb=0;
+        for(let i=0;i<n;i++){num+=(a[i]-ma)*(b[i]-mb);sa+=(a[i]-ma)**2;sb+=(b[i]-mb)**2;}
+        return sa>0&&sb>0?num/Math.sqrt(sa*sb):0;
+      }
+
+      const matrix=[], text=[];
+      for(const p1 of props){
+        const row=[], trow=[];
+        for(const p2 of props){
+          const r=pearson(allGlasses.map(g=>g[p1]),allGlasses.map(g=>g[p2]));
+          row.push(r); trow.push(r.toFixed(2));
+        }
+        matrix.push(row); text.push(trow);
+      }
+
+      const shortLabels = ['Density','Tg','CTE','nD','Liquidus'];
+      const trace = {
+        type:'heatmap',
+        z: matrix,
+        x: shortLabels, y: shortLabels,
+        text, texttemplate:'%{text}',
+        colorscale:[
+          [0,'#ff453a'],[0.5,'rgba(255,255,255,0.05)'],[1,'#30d158']
+        ],
+        zmid:0, zmin:-1, zmax:1,
+        colorbar:{title:{text:'Pearson r',side:'right'},thickness:12,len:0.7,
+                  tickfont:{size:10,color:'#86868b'},titlefont:{size:11,color:'#86868b'}},
+        hovertemplate:'%{y} × %{x}: %{text}<extra></extra>',
+      };
+
+      const layout = {
+        paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+        font:{color:'#86868b',size:12},
+        margin:{l:80,r:20,t:20,b:80},
+        xaxis:{color:'#86868b',tickangle:-30},
+        yaxis:{color:'#86868b'},
+        annotations:[{
+          x:0.5, y:-0.22, xref:'paper', yref:'paper',
+          text:`Based on ${allGlasses.length.toLocaleString()} glasses with all 5 properties measured`,
+          showarrow:false, font:{size:10,color:'#86868b'},
+        }],
+      };
+
+      this.cr.plotted=true;
+      Plotly.newPlot('correlation-chart',[trace],layout,{responsive:true,displayModeBar:false});
+    },
+  };
+}
+</script>
+{% endblock %}

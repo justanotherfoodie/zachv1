@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% block title %}Viscosity Fitting — Zach V1{% endblock %}
+{% block page_title %}Viscosity Model Fitting{% endblock %}
+
+{% block content %}
+<div x-data="viscFitter()" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+
+  <!-- ── Left: Input ───────────────────────────────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+
+    <!-- Data entry -->
+    <div class="zcard">
+      <div class="zcard-body">
+        <div style="font-size:15px;font-weight:600;margin-bottom:4px;">Temperature–Viscosity Data</div>
+        <div style="font-size:12px;color:#86868b;margin-bottom:12px;">Enter T (°C) and log₁₀(η / Pa·s) pairs. Minimum 3 points.</div>
+
+        <div style="overflow-x:auto;max-height:280px;">
+          <table class="ztable">
+            <thead><tr><th>T (°C)</th><th>log₁₀ η</th><th>Note</th><th></th></tr></thead>
+            <tbody>
+              <template x-for="(row, i) in dataRows" :key="i">
+                <tr>
+                  <td><input x-model.number="row.T" type="number" step="any" class="zinput" style="width:80px;padding:4px 8px;"></td>
+                  <td><input x-model.number="row.logv" type="number" step="any" class="zinput" style="width:80px;padding:4px 8px;"></td>
+                  <td><input x-model="row.note" type="text" placeholder="working pt…" class="zinput" style="width:110px;padding:4px 8px;"></td>
+                  <td><button @click="removeRow(i)" class="zbtn zbtn-ghost zbtn-xs" style="color:#ff453a;">×</button></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+          <button @click="addRow()" class="zbtn zbtn-ghost zbtn-xs">+ Add row</button>
+          <button @click="loadSodaLimeSample()" class="zbtn zbtn-ghost zbtn-xs">Load soda-lime sample</button>
+          <button @click="clearData()" class="zbtn zbtn-ghost zbtn-xs" style="color:#ff453a;">Clear</button>
+        </div>
+
+        <!-- Paste CSV -->
+        <div style="margin-top:14px;">
+          <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Paste CSV (T,logV per line)</div>
+          <textarea x-model="csvPaste" placeholder="1400,1.5&#10;1200,3.0&#10;700,8.0&#10;..." rows="3"
+            class="zinput" style="font-family:monospace;font-size:12px;resize:vertical;"></textarea>
+          <button @click="importCSV()" class="zbtn zbtn-ghost zbtn-sm" style="margin-top:6px;">Import CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Model selection -->
+    <div class="zcard">
+      <div class="zcard-body" style="padding:18px 24px;">
+        <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Model</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;">
+          <template x-for="m in models" :key="m.key">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="radio" :value="m.key" x-model="selectedModel" style="accent-color:#2997ff;">
+              <span style="font-size:13px;" x-text="m.label"></span>
+            </label>
+          </template>
+        </div>
+        <div style="background:#1a1a1a;border-radius:8px;padding:10px 14px;font-size:11px;color:#86868b;font-family:monospace;margin-bottom:14px;" x-text="models.find(m=>m.key===selectedModel)?.eq"></div>
+
+        <div style="display:flex;gap:8px;">
+          <button @click="fitModel()" class="zbtn zbtn-primary zbtn-sm" :disabled="loading || dataRows.length < 3">
+            <span x-show="loading" class="zspin" style="width:12px;height:12px;"></span>
+            Fit Model
+          </button>
+          <button @click="compareAll()" class="zbtn zbtn-secondary zbtn-sm" :disabled="loading || dataRows.length < 3">
+            Compare All
+          </button>
+        </div>
+        <div x-show="error" class="zalert zalert-error" style="margin-top:10px;font-size:12px;" x-text="error"></div>
+      </div>
+    </div>
+
+    <!-- Results panel -->
+    <div x-show="result" class="zcard">
+      <div class="zcard-body" style="padding:18px 24px;">
+        <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Fit Results</div>
+
+        <!-- Fit quality -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+          <div style="background:#1a1a1a;border-radius:10px;padding:12px 16px;text-align:center;min-width:80px;">
+            <div style="font-size:10px;color:#86868b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">R²</div>
+            <div style="font-size:20px;font-weight:700;color:#2997ff;" x-text="result?.r2?.toFixed(4)"></div>
+          </div>
+          <div style="background:#1a1a1a;border-radius:10px;padding:12px 16px;text-align:center;min-width:80px;">
+            <div style="font-size:10px;color:#86868b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">RMSE</div>
+            <div style="font-size:20px;font-weight:700;color:#30d158;" x-text="result?.rmse?.toFixed(4)"></div>
+          </div>
+          <div x-show="result?.fragility" style="background:#1a1a1a;border-radius:10px;padding:12px 16px;text-align:center;min-width:80px;">
+            <div style="font-size:10px;color:#86868b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Fragility (m)</div>
+            <div style="font-size:20px;font-weight:700;color:#bf5af2;" x-text="result?.fragility"></div>
+          </div>
+        </div>
+
+        <!-- Parameters -->
+        <div style="margin-bottom:14px;">
+          <div style="font-size:11px;font-weight:600;color:#86868b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Parameters</div>
+          <template x-for="[k,v] in Object.entries(result?.params ?? {})">
+            <div style="display:flex;justify-content:space-between;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.05);padding:5px 0;">
+              <span style="font-family:monospace;" x-text="k"></span>
+              <span style="font-family:monospace;color:#86868b;" x-text="v + ' ± ' + (result?.param_err?.[k] ?? '—')"></span>
+            </div>
+          </template>
+        </div>
+
+        <!-- Characteristic temperatures -->
+        <div style="font-size:11px;font-weight:600;color:#86868b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Characteristic Temperatures</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          <template x-for="[label, key] in [['Tg (°C)','Tg_C'],['Liquidus (°C)','T_liquidus'],['Working (°C)','T_working'],['Softening (°C)','T_softening'],['Annealing (°C)','T_annealing'],['Strain (°C)','T_strain'],['Working Range ΔT','working_range_C']]" :key="key">
+            <div style="background:#1a1a1a;border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:11px;color:#86868b;" x-text="label"></span>
+              <span style="font-size:12px;font-family:monospace;font-weight:600;" x-text="result?.[key] != null ? result[key].toFixed(0) : '—'"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Right: Charts ──────────────────────────────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+
+    <!-- Viscosity curve chart -->
+    <div class="zcard">
+      <div class="zcard-body">
+        <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Viscosity Curve</div>
+        <div id="visc-plot" style="height:380px;"></div>
+      </div>
+    </div>
+
+    <!-- Model comparison table -->
+    <div x-show="compareResults" class="zcard">
+      <div class="zcard-body">
+        <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Model Comparison</div>
+        <div style="overflow-x:auto;">
+          <table class="ztable">
+            <thead><tr><th>Model</th><th>R²</th><th>RMSE</th><th>Tg (°C)</th><th>m</th><th>Working ΔT</th></tr></thead>
+            <tbody>
+              <template x-for="[model, r] in Object.entries(compareResults ?? {})" :key="model">
+                <tr :style="r.error ? 'opacity:0.4' : ''">
+                  <td style="font-weight:600;" x-text="model.toUpperCase()"></td>
+                  <td x-text="r.error ? '—' : r.r2?.toFixed(4)"></td>
+                  <td x-text="r.error ? r.error : r.rmse?.toFixed(4)"></td>
+                  <td x-text="r.Tg_C != null ? r.Tg_C.toFixed(0) : '—'"></td>
+                  <td x-text="r.fragility ?? '—'"></td>
+                  <td x-text="r.working_range_C != null ? r.working_range_C.toFixed(0)+' °C' : '—'"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Viscosity reference guide -->
+    <div class="zcard">
+      <div class="zcard-body" style="padding:16px 24px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Reference Viscosity Points</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+            <span style="color:#86868b;">Melting / liquidus</span><span style="font-family:monospace;">log η = 1</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+            <span style="color:#86868b;">Working point</span><span style="font-family:monospace;">log η = 4</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+            <span style="color:#86868b;">Littleton softening</span><span style="font-family:monospace;">log η = 6.6</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+            <span style="color:#86868b;">Annealing point</span><span style="font-family:monospace;">log η = 12</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;">
+            <span style="color:#86868b;">Strain point</span><span style="font-family:monospace;">log η = 13.5</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const VISC_REFS = [
+  {name:'Liquidus', logv:1.0, color:'#ff453a'},
+  {name:'Working',  logv:4.0, color:'#ff9f0a'},
+  {name:'Softening',logv:6.6, color:'#ffd60a'},
+  {name:'Annealing',logv:12.0,color:'#30d158'},
+  {name:'Strain',   logv:13.5,color:'#2997ff'},
+];
+
+function viscFitter() {
+  return {
+    dataRows: [{T:1400,logv:1.2,note:'liquidus'},{T:1200,logv:2.8,note:''},{T:900,logv:5.5,note:'working'},{T:700,logv:8.2,note:''},{T:550,logv:11.5,note:'annealing'}],
+    csvPaste: '',
+    selectedModel: 'myega',
+    models: [
+      {key:'myega', label:'MYEGA', eq:'log η = log η∞ + (12−log η∞)·(Tg/T)·exp[(m/(12−log η∞)−1)(Tg/T−1)]'},
+      {key:'vft',   label:'VFT',   eq:'log η = A + B / (T − T₀)'},
+      {key:'am',    label:'Avramov-Milchev', eq:'log η = log η∞ + (T_ref/T)^α'},
+    ],
+    result: null, compareResults: null,
+    loading: false, error: '',
+
+    addRow()    { this.dataRows.push({T:'',logv:'',note:''}); },
+    removeRow(i){ this.dataRows.splice(i,1); },
+    clearData() { this.dataRows=[]; this.result=null; this.compareResults=null; },
+
+    loadSodaLimeSample() {
+      this.dataRows = [
+        {T:1500,logv:1.1,note:'melt'},{T:1300,logv:2.2,note:''},{T:1100,logv:3.8,note:''},
+        {T:900,logv:5.8,note:'working'},{T:750,logv:8.0,note:''},{T:600,logv:10.5,note:''},
+        {T:530,logv:11.9,note:'annealing'},{T:490,logv:13.2,note:'strain'},
+      ];
+    },
+
+    importCSV() {
+      const lines = this.csvPaste.trim().split('\n');
+      const rows = [];
+      for (const line of lines) {
+        const [T, logv, note=''] = line.split(',').map(s=>s.trim());
+        if (T && logv) rows.push({T:parseFloat(T), logv:parseFloat(logv), note});
+      }
+      if (rows.length) { this.dataRows=rows; this.csvPaste=''; }
+    },
+
+    _validRows() {
+      return this.dataRows.filter(r=>r.T!==''&&r.logv!==''&&isFinite(r.T)&&isFinite(r.logv));
+    },
+
+    async fitModel() {
+      const rows=this._validRows();
+      if(rows.length<3){ this.error='Need at least 3 valid data points.'; return; }
+      this.loading=true; this.error='';
+      const res=await fetch('/api/viscosity/fit',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({temperatures:rows.map(r=>r.T),log_viscosities:rows.map(r=>r.logv),model:this.selectedModel})
+      });
+      const j=await res.json();
+      this.loading=false;
+      if(j.ok){ this.result=j.data; this.updatePlot([j.data]); }
+      else this.error=j.error;
+    },
+
+    async compareAll() {
+      const rows=this._validRows();
+      if(rows.length<3){ this.error='Need at least 3 valid data points.'; return; }
+      this.loading=true; this.error='';
+      const res=await fetch('/api/viscosity/compare',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({temperatures:rows.map(r=>r.T),log_viscosities:rows.map(r=>r.logv)})
+      });
+      const j=await res.json();
+      this.loading=false;
+      if(j.ok){
+        this.compareResults=j.data;
+        this.result=Object.values(j.data).find(r=>!r.error)||null;
+        this.updatePlot(Object.values(j.data).filter(r=>!r.error));
+      } else this.error=j.error;
+    },
+
+    updatePlot(fits) {
+      const rows=this._validRows();
+      const traces=[];
+      traces.push({
+        type:'scatter',mode:'markers',name:'Data',
+        x:rows.map(r=>r.T), y:rows.map(r=>r.logv),
+        marker:{color:'#f5f5f7',size:9,line:{color:'#2997ff',width:2}},
+      });
+      const colors=['#2997ff','#ffd60a','#30d158'];
+      fits.forEach((f,i)=>{
+        if(!f.curve_T) return;
+        traces.push({
+          type:'scatter',mode:'lines',name:(f.model||'').toUpperCase(),
+          x:f.curve_T,y:f.curve_logv,
+          line:{color:colors[i%3],width:2.5},
+        });
+      });
+      VISC_REFS.forEach(ref=>{
+        traces.push({
+          type:'scatter',mode:'lines',name:ref.name,
+          x:[200,1800],y:[ref.logv,ref.logv],
+          line:{color:ref.color,width:1,dash:'dot'},
+          showlegend:true,hoverinfo:'name+y',
+        });
+      });
+      Plotly.react('visc-plot',traces,{
+        paper_bgcolor:'transparent',plot_bgcolor:'rgba(255,255,255,0.02)',
+        font:{color:'#86868b',size:11},
+        margin:{l:55,r:15,t:15,b:50},
+        xaxis:{title:'Temperature (°C)',gridcolor:'rgba(255,255,255,0.06)'},
+        yaxis:{title:'log₁₀ η (Pa·s)',autorange:'reversed',gridcolor:'rgba(255,255,255,0.06)'},
+        legend:{orientation:'h',y:-0.18,font:{size:10}},
+        hovermode:'x unified',
+      },{responsive:true,displayModeBar:false});
+    },
+
+    init() {
+      Plotly.newPlot('visc-plot',[],{
+        paper_bgcolor:'transparent',plot_bgcolor:'rgba(255,255,255,0.02)',
+        font:{color:'#86868b'},
+        margin:{l:55,r:15,t:15,b:50},
+        xaxis:{title:'Temperature (°C)'},
+        yaxis:{title:'log₁₀ η (Pa·s)',autorange:'reversed'},
+        annotations:[{text:'Enter data and click Fit Model',xref:'paper',yref:'paper',x:0.5,y:0.5,showarrow:false,font:{size:14,color:'rgba(255,255,255,0.2)'}}],
+      },{responsive:true,displayModeBar:false});
+    }
+  };
+}
+</script>
+{% endblock %}
