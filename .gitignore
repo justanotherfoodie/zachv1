@@ -15,8 +15,9 @@ venv/
 env/
 ENV/
 
-# Databases (not committed — too large / contains private data)
-*.db
+# Databases (not committed — too large / distributed via GitHub Releases)
+data/sciglass_clean.db
+user_data.db
 *.sqlite
 *.sqlite3
 

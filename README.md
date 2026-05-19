@@ -2,76 +2,67 @@
 
 A free, open-source glass informatics tool for researchers and engineers. Runs entirely on your local machine — no data is ever transmitted or shared.
 
-## Features
+---
 
-- **Explore Database** — search and filter 400 000+ glasses from the SciGlass dataset by composition, property, and oxide system
-- **ML Property Prediction** — Random Forest models trained on SciGlass; predict density, Tg, CTE, refractive index, and liquidus temperature
-- **Batch CSV Prediction** — upload a spreadsheet of compositions, download predictions in seconds
-- **Ternary Diagram** — interactive Plotly ternary plot coloured by any property
-- **Scatter & Histogram** — composition–property scatter plots, property distributions, and pairwise correlation matrix
-- **Similarity Search** — nearest-neighbour search to find the most compositionally similar glasses in the database
-- **Viscosity Fitting** — fit MYEGA / VFT / Avramov-Milchev models to measured viscosity data
-- **Inverse Design** — Latin Hypercube Sampling + Genetic Algorithm optimisation toward target properties
-- **Theory Tools** — NBO/T, optical basicity (Duffy-Ingram), topological constraints (Phillips-Thorpe)
-- **Add Glass / CSV Import** — build and manage your own private glass library; bulk-import from CSV
-- **Database Management** — export/import your private library as JSON or SQLite; all data stays local
+## Quick Start
 
-## Requirements
+### Windows
 
-- Python 3.10+
-- The `sciglass_clean.db` database file (see below)
+```
+1. Download and unzip this repository
+2. Double-click  setup.bat       ← installs Python packages + downloads the database (~300 MB)
+3. Double-click  run.bat         ← starts the app and opens your browser
+```
 
-## Installation
+### macOS / Linux
 
 ```bash
 git clone https://github.com/gongyauc/zachv1.git
 cd zachv1
-pip install -r requirements.txt
+chmod +x setup.sh && ./setup.sh        # installs packages + downloads the database
+source venv/bin/activate && python app.py
 ```
 
-## Database Setup
+Then open **http://localhost:5050** in your browser.
 
-The SciGlass database file (`sciglass_clean.db`) is not included in this repository due to its size.
+---
 
-**Download:** [sciglass_clean.db — Google Drive](#) *(link coming soon)*
+## Requirements
 
-Once downloaded, either:
+- Python 3.10 or newer — download from https://python.org
+- Internet connection for the one-time database download (~300 MB)
 
-**Option A** — place it at the default path the app expects:
-```
-../Zach 1.0/extracted/select/sciglass_clean.db
-```
+No other installation needed. `setup.bat` / `setup.sh` handles everything.
 
-**Option B** — set an environment variable pointing to wherever you saved it:
-```bash
-# Windows
-set SCIGLASS_DB=C:\path\to\sciglass_clean.db
+---
 
-# macOS / Linux
-export SCIGLASS_DB=/path/to/sciglass_clean.db
-```
+## Features
 
-## Running
+| Feature | Description |
+|---|---|
+| **Explore Database** | Search 400 000+ glasses from SciGlass by composition, property, and oxide system |
+| **ML Prediction** | Predict density, Tg, CTE, refractive index, liquidus temperature |
+| **Batch CSV Predict** | Upload a spreadsheet of compositions, download predictions instantly |
+| **Ternary Diagram** | Interactive ternary plot coloured by any property |
+| **Scatter & Histogram** | Composition–property scatter, property distributions, correlation matrix |
+| **Similarity Search** | Find the most compositionally similar glasses in the database |
+| **Viscosity Fitting** | Fit MYEGA / VFT / Avramov-Milchev models to measured data |
+| **Inverse Design** | Optimise composition toward target properties (LHS + Genetic Algorithm) |
+| **Theory Tools** | NBO/T, optical basicity, topological constraints |
+| **Private Glass Library** | Add and manage your own glasses; bulk-import via CSV |
+| **Database Backup** | Export / import your private library as JSON or SQLite |
 
-**Windows:**
-```
-run.bat
-```
-
-**macOS / Linux:**
-```bash
-python app.py
-```
-
-Then open [http://localhost:5050](http://localhost:5050) in your browser.
+---
 
 ## Privacy
 
-Zach V1 runs 100% locally. No composition data, no glass library entries, and no usage data is ever sent anywhere. Your research stays on your machine.
+Zach V1 runs 100% locally. No composition data, no glass library entries, and no usage information is ever sent anywhere. Your research stays on your machine.
+
+---
 
 ## Testing Services
 
-The development of Zach V1 is partially funded by contracted glass testing services. If you find this tool useful, consider engaging our lab for:
+Zach V1 is free and open. Contracted testing work partially funds its ongoing maintenance and development. If you find this tool useful in your research, consider engaging our lab:
 
 - Glass melting (contracted)
 - Glass machining
@@ -80,12 +71,14 @@ The development of Zach V1 is partially funded by contracted glass testing servi
 - Thermal-mechanical testing
 - UV-Vis-IR spectroscopy
 
-Contact: [gongyauc@gmail.com](mailto:gongyauc@gmail.com)
+**Contact:** gongyauc@gmail.com
+
+---
 
 ## Data Source
 
-The SciGlass database is used under the [Open Database License (ODbL) v1.0](https://opendatacommons.org/licenses/odbl/1-0/). Any derivative databases must be shared under the same license.
+The SciGlass database is used under the [Open Database License (ODbL) v1.0](https://opendatacommons.org/licenses/odbl/1-0/). Derivative databases must be shared under the same license.
 
 ## License
 
-MIT License — see `LICENSE` for details.
+MIT — see `LICENSE` for details.

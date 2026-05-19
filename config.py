@@ -6,7 +6,7 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 # Set SCIGLASS_DB env variable to point to your sciglass_clean.db file,
 # or place sciglass_clean.db in the same directory as this file.
 # Download link: see README.md
-_default_db = os.path.join(BASE_DIR, "..", "Zach 1.0", "extracted", "select", "sciglass_clean.db")
+_default_db = os.path.join(BASE_DIR, "data", "sciglass_clean.db")
 DB_PATH    = os.environ.get("SCIGLASS_DB", _default_db)
 USER_DB    = os.path.join(BASE_DIR, "user_data.db")
 MODEL_DIR  = os.path.join(BASE_DIR, "models_cache")
