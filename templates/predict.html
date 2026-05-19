@@ -1,0 +1,584 @@
+{% extends "base.html" %}
+{% block title %}ML Prediction — Zach V1{% endblock %}
+{% block page_title %}ML Property Prediction{% endblock %}
+
+{% block content %}
+<div x-data="predictor()">
+
+  <!-- Tab switcher -->
+  <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <button @click="tab='single'"
+            :style="tab==='single'?'background:#2997ff;color:#fff;':'background:rgba(255,255,255,0.06);color:#f5f5f7;'"
+            style="padding:8px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;">
+      Single Glass
+    </button>
+    <button @click="tab='batch'"
+            :style="tab==='batch'?'background:#2997ff;color:#fff;':'background:rgba(255,255,255,0.06);color:#f5f5f7;'"
+            style="padding:8px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;">
+      Batch CSV Predict
+    </button>
+  </div>
+
+  <!-- ══════════════════════════════════════ SINGLE GLASS TAB ══════════════ -->
+  <div x-show="tab==='single'" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+
+    <!-- ── Left: Input ──────────────────────────────────────────────────── -->
+    <div style="display:flex;flex-direction:column;gap:14px;">
+
+      <!-- Preload status banner -->
+      <div x-show="Object.values(preloadStatus).some(s=>s==='training'||s==='pending')" class="zalert zalert-info" style="font-size:12px;">
+        <span class="zspin" style="width:12px;height:12px;flex-shrink:0;"></span>
+        <span>Pre-built models are loading in the background. Predictions will be available once ready.</span>
+      </div>
+
+      <!-- Composition entry -->
+      <div class="zcard">
+        <div class="zcard-body">
+          <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Glass Composition</div>
+          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+            <select x-model="compType" class="zinput" style="width:auto;flex:1;max-width:120px;">
+              <option value="mol_pct">mol%</option>
+              <option value="wt_pct">wt%</option>
+            </select>
+            <button @click="normComp()" class="zbtn zbtn-ghost zbtn-sm">Normalise</button>
+            <button @click="clearComp()" class="zbtn zbtn-ghost zbtn-sm" style="color:#ff453a;">Clear</button>
+          </div>
+
+          <!-- Quick presets -->
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+            <button @click="loadPreset('sodalime')"        class="zbtn zbtn-ghost zbtn-xs">Soda-lime</button>
+            <button @click="loadPreset('borosilicate')"    class="zbtn zbtn-ghost zbtn-xs">Borosilicate</button>
+            <button @click="loadPreset('leadcrystal')"     class="zbtn zbtn-ghost zbtn-xs">Lead crystal</button>
+            <button @click="loadPreset('aluminosilicate')" class="zbtn zbtn-ghost zbtn-xs">Aluminosilicate</button>
+          </div>
+
+          <div class="oxide-grid">
+            {% for oxide in oxides %}
+            <div class="oxide-row">
+              <label class="oxide-label">{{ oxide }}</label>
+              <input type="number" min="0" max="100" step="0.1" placeholder="0"
+                :value="comp['{{ oxide }}'] || ''"
+                @input="comp['{{ oxide }}'] = parseFloat($event.target.value) || 0"
+                class="zinput oxide-input" style="padding:4px 8px;font-size:12px;">
+            </div>
+            {% endfor %}
+          </div>
+
+          <!-- Sum indicator -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;">
+            <span style="color:#86868b;">Sum:</span>
+            <span :style="Math.abs(compSum-100)<2 ? 'color:#30d158;font-weight:700' : 'color:#ffd60a;font-weight:700'"
+                  x-text="compSum.toFixed(2) + '%'"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Property selection -->
+      <div class="zcard">
+        <div class="zcard-body">
+          <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Properties to Predict</div>
+
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <input x-model="customProp" @keydown.enter="addProp()" type="text"
+              placeholder="e.g. density_g_cm3" class="zinput" style="flex:1;">
+            <button @click="addProp()" class="zbtn zbtn-primary zbtn-sm">Add</button>
+          </div>
+
+          <!-- Quick-add built-in properties -->
+          <div style="margin-bottom:10px;">
+            <div style="font-size:11px;color:#555;margin-bottom:6px;">Pre-built models (pre-trained on SciGlass):</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              <template x-for="p in commonProps" :key="p">
+                <button @click="toggleProp(p)"
+                  :class="selectedProps.includes(p) ? 'zbtn zbtn-primary zbtn-xs' : 'zbtn zbtn-ghost zbtn-xs'"
+                  x-text="p.replace(/_/g,' ')"></button>
+              </template>
+            </div>
+          </div>
+
+          <div x-show="selectedProps.length > 0" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+            <template x-for="p in selectedProps" :key="p">
+              <span class="zbadge zbadge-purple" @click="toggleProp(p)" style="cursor:pointer;">
+                <span x-text="p"></span>
+                <span style="margin-left:4px;opacity:.6;">×</span>
+              </span>
+            </template>
+          </div>
+
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:12px;color:#86868b;">Model:</span>
+              <select x-model="modelType" class="zinput" style="width:auto;font-size:12px;padding:4px 10px;">
+                <option value="random_forest">Random Forest</option>
+                <option value="gradient_boosting">Gradient Boosting</option>
+                <option value="extra_trees">Extra Trees</option>
+              </select>
+            </div>
+            <button @click="predict()" class="zbtn zbtn-primary zbtn-sm" style="margin-left:auto;"
+              :disabled="loading || selectedProps.length === 0 || compSum < 10">
+              <span x-show="loading" class="zspin" style="width:12px;height:12px;"></span>
+              Predict
+            </button>
+          </div>
+          <div x-show="error" class="zalert zalert-error" style="margin-top:10px;font-size:12px;" x-text="error"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Right: Results ──────────────────────────────────────────────── -->
+    <div style="display:flex;flex-direction:column;gap:14px;">
+
+      <!-- Prediction results -->
+      <div x-show="predictions.length > 0" class="zcard">
+        <div class="zcard-body">
+          <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Predictions</div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <template x-for="p in predictions" :key="p.prop_name">
+              <div style="background:#1a1a1a;border-radius:12px;padding:14px 16px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+                  <span style="font-size:13px;font-weight:500;" x-text="p.prop_name.replace(/_/g,' ')"></span>
+                  <span style="font-size:22px;font-weight:700;color:#2997ff;" x-text="p.value?.toFixed(4)"></span>
+                </div>
+                <!-- 90% CI -->
+                <div x-show="p.lower_90 != null" style="font-size:11px;color:#86868b;display:flex;justify-content:space-between;">
+                  <span x-text="'90% CI: [' + p.lower_90?.toFixed(3) + ', ' + p.upper_90?.toFixed(3) + ']'"></span>
+                  <span x-text="'±' + (p.std ? p.std.toFixed(3) : '—')"></span>
+                </div>
+                <div x-show="p.lower_90 != null" style="margin-top:6px;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;">
+                  <div style="height:3px;background:#2997ff;border-radius:2px;" :style="`width:${p.confidence}%`"></div>
+                </div>
+                <div style="font-size:10px;color:#555;margin-top:6px;" x-text="p.model_type + ' · ' + p.comp_type"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature importance chart -->
+      <div x-show="featureImportance && Object.keys(featureImportance).length > 0" class="zcard">
+        <div class="zcard-body">
+          <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Feature Importance</div>
+          <div id="importance-chart" style="height:240px;"></div>
+        </div>
+      </div>
+
+      <!-- Model management -->
+      <div class="zcard">
+        <div class="zcard-body" style="padding:16px 24px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div style="font-size:13px;font-weight:600;">Trained Models</div>
+            <button @click="loadModels()" class="zbtn zbtn-ghost zbtn-xs">Refresh</button>
+          </div>
+
+          <!-- Preload status -->
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+            <template x-for="[prop, status] in Object.entries(preloadStatus)" :key="prop">
+              <span :class="status==='done' ? 'zbadge zbadge-green' : status==='training' ? 'zbadge zbadge-yellow' : 'zbadge zbadge-gray'"
+                    x-text="prop.replace(/_/g,' ') + (status==='done'?' ✓':status==='training'?' …':'')"></span>
+            </template>
+          </div>
+
+          <div x-show="trainedModels.length === 0" style="font-size:12px;color:#555;">No models trained yet. Run a prediction to auto-train.</div>
+          <div style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
+            <template x-for="m in trainedModels" :key="m.model_path">
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;background:#1a1a1a;border-radius:6px;padding:6px 10px;">
+                <div>
+                  <span style="font-family:monospace;" x-text="m.prop_name"></span>
+                  <span style="color:#555;margin-left:6px;" x-text="m.comp_type"></span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="color:#30d158;" x-text="'R²=' + m.cv_r2"></span>
+                  <span style="color:#555;" x-text="m.n_train?.toLocaleString() + ' pts'"></span>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- External model loader -->
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.07);">
+            <div style="font-size:11px;color:#555;margin-bottom:8px;">Load External Model</div>
+            <div style="display:flex;gap:6px;">
+              <input x-model="extSource" type="text" placeholder="path or GitHub raw URL" class="zinput" style="flex:1;font-size:12px;padding:5px 10px;">
+              <input x-model="extProp"   type="text" placeholder="property name"           class="zinput" style="width:120px;font-size:12px;padding:5px 10px;">
+              <button @click="loadExternal()" class="zbtn zbtn-ghost zbtn-sm">Load</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════ BATCH CSV TAB ══════════════════ -->
+  <div x-show="tab==='batch'">
+    <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start;">
+
+      <!-- Left: upload + config -->
+      <div style="display:flex;flex-direction:column;gap:14px;">
+
+        <!-- Format guide -->
+        <div class="zcard">
+          <div class="zcard-body">
+            <div style="font-size:13px;font-weight:600;margin-bottom:12px;">CSV Format Guide</div>
+            <div style="font-size:12px;color:#86868b;line-height:1.7;margin-bottom:12px;">
+              Your CSV must have a header row. Oxide columns are identified automatically — use standard names (SiO2, Na2O, etc.). Any extra columns are passed through unchanged.
+            </div>
+            <div style="background:#0a0a0a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;font-family:monospace;font-size:12px;line-height:1.8;overflow-x:auto;">
+              <span style="color:#30d158;">name</span><span style="color:#86868b;">,</span>
+              <span style="color:#2997ff;">SiO2</span><span style="color:#86868b;">,</span>
+              <span style="color:#2997ff;">Na2O</span><span style="color:#86868b;">,</span>
+              <span style="color:#2997ff;">CaO</span><span style="color:#86868b;">,</span>
+              <span style="color:#2997ff;">MgO</span><span style="color:#86868b;">,</span>
+              <span style="color:#2997ff;">Al2O3</span><br>
+              <span style="color:#30d158;">Glass A</span><span style="color:#86868b;">,72,13,10,3,2</span><br>
+              <span style="color:#30d158;">Glass B</span><span style="color:#86868b;">,80.5,4,</span><span style="color:#30d158;">0</span><span style="color:#86868b;">,0,2</span><br>
+              <span style="color:#30d158;">Glass C</span><span style="color:#86868b;">,65,18,12,4,1</span>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+              <div style="font-size:11px;display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:#2997ff;display:inline-block;"></span><span style="color:#86868b;">Oxide columns (auto-detected)</span></div>
+              <div style="font-size:11px;display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:#30d158;display:inline-block;"></span><span style="color:#86868b;">Any other columns (passed through)</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload + config -->
+        <div class="zcard">
+          <div class="zcard-body">
+            <div style="font-size:13px;font-weight:600;margin-bottom:14px;">Upload &amp; Configure</div>
+
+            <!-- File picker -->
+            <div style="margin-bottom:14px;">
+              <div style="font-size:11px;color:#86868b;margin-bottom:6px;">CSV file</div>
+              <input type="file" accept=".csv" @change="batchFile=$event.target.files[0]"
+                     class="zinput" style="padding:6px 10px;font-size:12px;">
+            </div>
+
+            <!-- Properties to predict -->
+            <div style="margin-bottom:14px;">
+              <div style="font-size:11px;color:#86868b;margin-bottom:6px;">Properties to predict</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+                <template x-for="p in commonProps" :key="p">
+                  <button @click="toggleBatchProp(p)"
+                    :class="batchProps.includes(p) ? 'zbtn zbtn-primary zbtn-xs' : 'zbtn zbtn-ghost zbtn-xs'"
+                    x-text="p.replace(/_/g,' ')"></button>
+                </template>
+              </div>
+              <div x-show="batchProps.length" style="display:flex;flex-wrap:wrap;gap:5px;">
+                <template x-for="p in batchProps" :key="p">
+                  <span class="zbadge zbadge-purple" @click="toggleBatchProp(p)" style="cursor:pointer;">
+                    <span x-text="p"></span><span style="margin-left:3px;opacity:.6;">×</span>
+                  </span>
+                </template>
+              </div>
+            </div>
+
+            <!-- Model type -->
+            <div style="margin-bottom:14px;">
+              <div style="font-size:11px;color:#86868b;margin-bottom:6px;">Model type</div>
+              <select x-model="batchModelType" class="zinput" style="max-width:200px;">
+                <option value="random_forest">Random Forest</option>
+                <option value="gradient_boosting">Gradient Boosting</option>
+                <option value="extra_trees">Extra Trees</option>
+              </select>
+            </div>
+
+            <button @click="runBatch()" class="zbtn zbtn-primary" :disabled="batchLoading || !batchFile || !batchProps.length">
+              <span x-show="batchLoading" class="zspin" style="width:14px;height:14px;"></span>
+              <span x-show="!batchLoading">Run Batch Prediction</span>
+              <span x-show="batchLoading">Processing…</span>
+            </button>
+
+            <div x-show="batchError" class="zalert zalert-error" style="margin-top:10px;font-size:12px;" x-text="batchError"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: results / download -->
+      <div style="display:flex;flex-direction:column;gap:14px;position:sticky;top:68px;">
+
+        <!-- Status / download card -->
+        <div class="zcard">
+          <div class="zcard-body">
+            <!-- Empty state -->
+            <div x-show="!batchDone && !batchLoading" style="text-align:center;padding:32px 0;color:#444;">
+              <div style="font-size:36px;margin-bottom:12px;">📋</div>
+              <div style="font-size:13px;">Upload a CSV and click Run Batch Prediction</div>
+              <div style="font-size:12px;color:#555;margin-top:6px;">Results download automatically as a new CSV</div>
+            </div>
+
+            <!-- Loading -->
+            <div x-show="batchLoading" style="text-align:center;padding:32px 0;">
+              <span class="zspin" style="width:36px;height:36px;"></span>
+              <div style="font-size:13px;color:#86868b;margin-top:12px;">Running ML predictions…</div>
+              <div style="font-size:12px;color:#555;margin-top:4px;">This may take a moment for large files</div>
+            </div>
+
+            <!-- Done -->
+            <div x-show="batchDone" style="text-align:center;padding:24px 0;">
+              <div style="font-size:36px;margin-bottom:8px;">✅</div>
+              <div style="font-size:14px;font-weight:600;color:#30d158;margin-bottom:4px;">Batch complete!</div>
+              <div style="font-size:12px;color:#86868b;margin-bottom:16px;" x-text="`${batchRowCount} rows processed`"></div>
+              <button @click="downloadResult()" class="zbtn zbtn-primary" style="width:100%;margin-bottom:8px;">
+                ⬇ Download Results CSV
+              </button>
+              <button @click="batchDone=false;batchFile=null;" class="zbtn zbtn-ghost zbtn-sm" style="width:100%;">
+                Run another file
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preview table (first 5 rows) -->
+        <div x-show="batchPreview.length" class="zcard">
+          <div class="zcard-body" style="padding:16px;">
+            <div style="font-size:12px;font-weight:600;margin-bottom:10px;">Preview (first 5 rows)</div>
+            <div style="overflow-x:auto;max-width:100%;">
+              <table class="ztable" style="font-size:11px;min-width:100%;">
+                <thead>
+                  <tr>
+                    <template x-for="h in batchPreviewHeaders" :key="h">
+                      <th x-text="h" :style="batchProps.includes(h)?'color:#2997ff;':''"></th>
+                    </template>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="(row,ri) in batchPreview" :key="ri">
+                    <tr>
+                      <template x-for="h in batchPreviewHeaders" :key="h">
+                        <td x-text="row[h]??'—'"
+                            :style="batchProps.includes(h)?'color:#2997ff;font-weight:600;font-family:monospace;':''"></td>
+                      </template>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Explain -->
+        <div class="zcard">
+          <div class="zcard-body">
+            <div style="font-size:13px;font-weight:600;margin-bottom:10px;">What happens</div>
+            <div style="font-size:12px;color:#86868b;line-height:1.7;">
+              1. Your CSV is read server-side<br>
+              2. Oxide columns are auto-detected<br>
+              3. Each row is fed to the ML model(s)<br>
+              4. Predicted columns are appended<br>
+              5. The enriched CSV is downloaded
+              <br><br>
+              <strong style="color:#f5f5f7;">Your data never leaves your machine</strong> — Zach V1 runs 100% locally.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PRESETS = {
+  sodalime:       {SiO2:72,Na2O:13,CaO:9,MgO:4,Al2O3:1,K2O:1},
+  borosilicate:   {SiO2:81,B2O3:12,Na2O:4,Al2O3:2,K2O:1},
+  leadcrystal:    {SiO2:54,PbO:30,K2O:10,Na2O:4,Al2O3:2},
+  aluminosilicate:{SiO2:60,Al2O3:17,CaO:10,MgO:7,B2O3:4,Na2O:2},
+};
+
+function predictor() {
+  return {
+    tab: 'single',
+
+    // ── Single glass state ───────────────────────────────────────────────
+    comp: {}, compType: 'mol_pct',
+    selectedProps: [], customProp: '', modelType: 'random_forest',
+    commonProps: ['density','tg_celsius','thermal_expansion_coeff','refractive_index_nD','liquidus_temp'],
+    predictions: [], trainedModels: [], featureImportance: {},
+    extSource: '', extProp: '',
+    preloadStatus: {},
+    loading: false, error: '',
+
+    // ── Batch CSV state ──────────────────────────────────────────────────
+    batchFile: null,
+    batchProps: ['density','tg_celsius'],
+    batchModelType: 'random_forest',
+    batchLoading: false, batchDone: false, batchError: '',
+    batchResultBlob: null, batchRowCount: 0,
+    batchPreview: [], batchPreviewHeaders: [],
+
+    // ── Single glass helpers ─────────────────────────────────────────────
+    get compSum() { return Object.values(this.comp).reduce((a,b)=>a+(b||0),0); },
+
+    loadPreset(name) { this.comp = {...PRESETS[name]}; },
+    normComp() {
+      const s = this.compSum;
+      if (s <= 0) return;
+      for (const k in this.comp) this.comp[k] = parseFloat((this.comp[k]*100/s).toFixed(3));
+    },
+    clearComp() { this.comp = {}; },
+
+    addProp() {
+      if (this.customProp && !this.selectedProps.includes(this.customProp))
+        this.selectedProps.push(this.customProp);
+      this.customProp = '';
+    },
+    toggleProp(p) {
+      const i = this.selectedProps.indexOf(p);
+      if (i >= 0) this.selectedProps.splice(i,1); else this.selectedProps.push(p);
+    },
+
+    async predict() {
+      this.loading = true; this.error = ''; this.predictions = [];
+      try {
+        const comp = Object.fromEntries(Object.entries(this.comp).filter(([,v])=>v>0));
+        const res = await fetch('/api/predict/batch', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({compositions:[comp], prop_names:this.selectedProps,
+                                comp_type:this.compType, model_type:this.modelType})
+        });
+        const j = await res.json();
+        if (j.ok) {
+          const row = j.data[0];
+          this.predictions = this.selectedProps.map(p => ({
+            prop_name: p,
+            value: row[p],
+            lower_90: row[p+'_lower'],
+            upper_90: row[p+'_upper'],
+            std: row[p+'_lower'] && row[p+'_upper'] ? (row[p+'_upper']-row[p+'_lower'])/3.29 : null,
+            model_type: this.modelType,
+            comp_type: this.compType,
+            confidence: row[p+'_lower'] ? Math.min(95, Math.max(5, 100 - Math.abs((row[p+'_upper']-row[p+'_lower'])/row[p]*100))) : 70,
+          }));
+          await this.loadModels();
+          await this.loadImportance();
+        } else this.error = j.error;
+      } catch(e) { this.error = e.message; }
+      this.loading = false;
+    },
+
+    async loadModels() {
+      const res = await fetch('/api/ml/models');
+      const j = await res.json();
+      if (j.ok) {
+        this.trainedModels = j.data.models || j.data;
+        this.preloadStatus = j.data.preload_status || {};
+      }
+    },
+
+    async loadImportance() {
+      if (!this.selectedProps[0]) return;
+      const res = await fetch('/api/ml/models');
+      const j = await res.json();
+      if (!j.ok) return;
+      const models = j.data.models || j.data;
+      const meta = models.find(m => m.prop_name === this.selectedProps[0] && m.comp_type === this.compType);
+      if (meta?.feature_importance) {
+        this.featureImportance = meta.feature_importance;
+        this.drawImportance(meta.feature_importance);
+      }
+    },
+
+    drawImportance(imp) {
+      const entries = Object.entries(imp).sort((a,b)=>b[1]-a[1]).slice(0,12);
+      Plotly.react('importance-chart', [{
+        type:'bar', orientation:'h',
+        x: entries.map(e=>e[1]),
+        y: entries.map(e=>e[0]),
+        marker:{color:'#2997ff', opacity:0.85},
+      }], {
+        paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+        font:{color:'#86868b',size:10},
+        margin:{l:130,r:10,t:10,b:30},
+        xaxis:{title:'Importance', gridcolor:'rgba(255,255,255,0.06)'},
+        yaxis:{autorange:'reversed'},
+      }, {responsive:true, displayModeBar:false});
+    },
+
+    async loadExternal() {
+      if (!this.extSource || !this.extProp) return;
+      const res = await fetch('/api/ml/load-external', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({source:this.extSource, prop_name:this.extProp})
+      });
+      const j = await res.json();
+      if (j.ok) { this.extSource=''; this.extProp=''; await this.loadModels(); }
+      else this.error = j.error;
+    },
+
+    async pollPreload() {
+      const res = await fetch('/api/ml/preload-status');
+      const j = await res.json();
+      if (j.ok) this.preloadStatus = j.data;
+      if (Object.values(this.preloadStatus).some(s=>s==='training'||s==='pending')) {
+        setTimeout(()=>this.pollPreload(), 3000);
+      }
+    },
+
+    // ── Batch CSV helpers ─────────────────────────────────────────────────
+    toggleBatchProp(p) {
+      const i = this.batchProps.indexOf(p);
+      if (i >= 0) this.batchProps.splice(i,1); else this.batchProps.push(p);
+    },
+
+    async runBatch() {
+      if(!this.batchFile || !this.batchProps.length) return;
+      this.batchLoading = true; this.batchDone = false;
+      this.batchError = ''; this.batchPreview = []; this.batchPreviewHeaders = [];
+
+      const fd = new FormData();
+      fd.append('file', this.batchFile);
+      fd.append('prop_names', this.batchProps.join(','));
+      fd.append('model_type', this.batchModelType);
+
+      try {
+        const res = await fetch('/api/predict/csv', {method:'POST', body: fd});
+        if(!res.ok) {
+          const j = await res.json().catch(()=>({error:'Server error'}));
+          this.batchError = j.error || `Server error ${res.status}`;
+          this.batchLoading = false; return;
+        }
+        const blob = await res.blob();
+        this.batchResultBlob = blob;
+
+        // Parse preview from blob
+        const text = await blob.text();
+        const lines = text.trim().split('\n');
+        if(lines.length > 1) {
+          const headers = lines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,''));
+          this.batchPreviewHeaders = headers;
+          this.batchPreview = lines.slice(1,6).map(line=>{
+            const vals = line.split(',').map(v=>v.trim().replace(/^"|"$/g,''));
+            const row = {};
+            headers.forEach((h,i)=>row[h]=vals[i]);
+            return row;
+          });
+          this.batchRowCount = lines.length - 1;
+        }
+
+        this.batchDone = true;
+      } catch(e) {
+        this.batchError = e.message;
+      }
+      this.batchLoading = false;
+    },
+
+    downloadResult() {
+      if(!this.batchResultBlob) return;
+      const url = URL.createObjectURL(this.batchResultBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      const orig = this.batchFile?.name || 'predictions';
+      a.download = orig.replace(/\.csv$/i,'') + '_predicted.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+
+    init() {
+      this.loadModels();
+      this.pollPreload();
+    },
+  };
+}
+</script>
+{% endblock %}

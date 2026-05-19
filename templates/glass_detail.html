@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Glass {{ glass.id }} — Zach V1{% endblock %}
+{% block page_title %}Glass #{{ glass.id }}{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<div style="font-size:12px;color:#555;margin-bottom:20px;display:flex;align-items:center;gap:6px;">
+  <a href="/explore" style="color:#2997ff;text-decoration:none;">Explorer</a>
+  <span>›</span>
+  <span>Glass {{ glass.id }}</span>
+  {% if glass.comp_type %}
+  <span class="zbadge zbadge-blue" style="margin-left:6px;">{{ glass.comp_type }}</span>
+  {% endif %}
+  <span class="zbadge zbadge-gray" style="margin-left:4px;">{{ glass.source }}</span>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;">
+
+  <!-- Composition -->
+  <div class="zcard">
+    <div class="zcard-body">
+      <div style="font-size:15px;font-weight:600;margin-bottom:4px;">Composition</div>
+      {% if glass.comp_note %}
+      <div style="font-size:12px;color:#555;margin-bottom:12px;">{{ glass.comp_note }}</div>
+      {% endif %}
+
+      <div id="comp-chart" style="height:200px;margin-bottom:14px;"></div>
+
+      <div style="overflow-x:auto;max-height:260px;">
+        <table class="ztable">
+          <thead><tr><th>Oxide</th><th>Value</th><th>Type</th></tr></thead>
+          <tbody>
+            {% for c in glass.compositions | sort(attribute='value', reverse=true) %}
+            {% if c.value > 0 %}
+            <tr>
+              <td style="font-family:monospace;font-size:12px;">{{ c.oxide }}</td>
+              <td style="font-weight:500;">{{ "%.3f"|format(c.value) }}</td>
+              <td style="color:#555;font-size:11px;">{{ c.comp_type or '' }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Properties -->
+  <div class="zcard">
+    <div class="zcard-body">
+      <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Properties
+        <span style="font-size:12px;color:#555;font-weight:400;margin-left:6px;">{{ glass.properties | length }} values</span>
+      </div>
+      {% if glass.properties %}
+      <div style="overflow-x:auto;max-height:380px;">
+        <table class="ztable">
+          <thead><tr><th>Property</th><th>Value</th><th>Unit</th><th>T</th></tr></thead>
+          <tbody>
+            {% for p in glass.properties %}
+            <tr>
+              <td style="font-size:12px;">{{ p.property_name | replace('_',' ') }}</td>
+              <td style="font-family:monospace;font-size:12px;font-weight:500;">{{ p.value }}</td>
+              <td style="font-size:11px;color:#555;">{{ p.unit or '' }}</td>
+              <td style="font-size:11px;color:#555;">{{ p.temperature_condition or p.temperature or '' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="color:#555;font-size:13px;padding:32px 0;text-align:center;">No property data available.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Viscosity (user glasses) -->
+{% if glass.viscosity_points %}
+<div class="zcard" style="margin-bottom:18px;">
+  <div class="zcard-body">
+    <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Viscosity Data</div>
+    <div id="visc-chart" style="height:260px;"></div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Theory analysis -->
+<div class="zcard" x-data="theoryPanel({{ glass.compositions | tojson }})">
+  <div class="zcard-body">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div style="font-size:15px;font-weight:600;">Theoretical Analysis</div>
+      <button @click="analyse()" class="zbtn zbtn-primary zbtn-sm" :disabled="loading">
+        <span x-show="loading" class="zspin" style="width:12px;height:12px;"></span>
+        Calculate
+      </button>
+    </div>
+
+    <div x-show="!result" style="color:#555;font-size:13px;">
+      Click Calculate to run NBO/T, optical basicity, and topological constraint analysis.
+    </div>
+
+    <div x-show="result" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+      <div style="background:#1a1a1a;border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">NBO/T</div>
+        <div style="font-size:28px;font-weight:700;color:#2997ff;" x-text="result?.nbo_t?.nbo_t ?? '—'"></div>
+        <div style="font-size:11px;color:#555;margin-top:6px;" x-text="result?.nbo_t?.connectivity"></div>
+      </div>
+      <div style="background:#1a1a1a;border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Optical Basicity</div>
+        <div style="font-size:28px;font-weight:700;color:#30d158;" x-text="result?.optical_basicity?.optical_basicity ?? '—'"></div>
+        <div style="font-size:11px;color:#555;margin-top:6px;" x-text="result?.optical_basicity?.character?.split(' ')[0]"></div>
+      </div>
+      <div style="background:#1a1a1a;border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Constraints/Cation</div>
+        <div style="font-size:28px;font-weight:700;color:#bf5af2;" x-text="result?.topological?.n_constraints_total ?? '—'"></div>
+        <div style="font-size:11px;color:#555;margin-top:6px;" x-text="(result?.topological?.rigidity_regime||'').split(' ').slice(0,2).join(' ')"></div>
+      </div>
+      <div style="background:#1a1a1a;border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Density Est.</div>
+        <div style="font-size:22px;font-weight:700;color:#ffd60a;" x-text="result?.estimates?.density_est_g_cm3 ? result.estimates.density_est_g_cm3+' g/cm³' : '—'"></div>
+        <div style="font-size:11px;color:#555;margin-top:6px;">Linear additive</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const comps = {{ glass.compositions | tojson }};
+if (comps.length > 0) {
+  const sorted = [...comps].sort((a,b)=>b.value-a.value).filter(c=>c.value>0);
+  Plotly.newPlot('comp-chart', [{
+    type:'bar', x:sorted.map(c=>c.oxide), y:sorted.map(c=>c.value),
+    marker:{color:sorted.map((_,i)=>`hsl(${210+i*18},70%,${55+i*2}%)`), borderRadius:4},
+  }], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    font:{color:'#86868b',size:10},
+    margin:{l:36,r:8,t:8,b:60},
+    xaxis:{tickangle:-40,gridcolor:'rgba(255,255,255,0.04)'},
+    yaxis:{title:comps[0]?.comp_type||'value',gridcolor:'rgba(255,255,255,0.04)'},
+    showlegend:false,
+  },{responsive:true,displayModeBar:false});
+}
+{% if glass.viscosity_points %}
+const vpts = {{ glass.viscosity_points | tojson }};
+Plotly.newPlot('visc-chart',[{
+  type:'scatter',mode:'markers',
+  x:vpts.map(v=>v.temperature), y:vpts.map(v=>v.log_visc),
+  marker:{color:'#2997ff',size:9,line:{color:'rgba(41,151,255,0.3)',width:4}},
+}],{
+  paper_bgcolor:'transparent',plot_bgcolor:'rgba(255,255,255,0.02)',
+  font:{color:'#86868b'},margin:{l:50,r:16,t:12,b:48},
+  xaxis:{title:'Temperature (°C)',gridcolor:'rgba(255,255,255,0.06)'},
+  yaxis:{title:'log₁₀ η (Pa·s)',autorange:'reversed',gridcolor:'rgba(255,255,255,0.06)'},
+},{responsive:true,displayModeBar:false});
+{% endif %}
+
+function theoryPanel(comps) {
+  const comp={};
+  comps.forEach(c=>{comp[c.oxide]=c.value;});
+  return {
+    result:null, loading:false,
+    async analyse() {
+      this.loading=true;
+      const res=await fetch('/api/tools/analyse',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({composition:comp})
+      });
+      const j=await res.json();
+      if(j.ok) this.result=j.data;
+      this.loading=false;
+    }
+  };
+}
+</script>
+{% endblock %}

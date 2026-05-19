@@ -1,0 +1,643 @@
+{% extends "base.html" %}
+{% block title %}Add Glass — Zach V1{% endblock %}
+{% block page_title %}Add Glass & Manage Database{% endblock %}
+
+{% block content %}
+
+<!-- ═══════════════════════  ADD NEW GLASS  ═══════════════════════════════ -->
+<div x-data="addGlass()" style="max-width:960px;">
+
+  <div x-show="saved" class="zalert zalert-success" style="margin-bottom:16px;">
+    <svg style="width:18px;height:18px;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <span>Glass saved! ID: <strong x-text="savedId"></strong></span>
+    <a :href="`/glass/${savedId}?source=user`" class="zbtn zbtn-ghost zbtn-xs" style="margin-left:8px;">View →</a>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+
+    <!-- ── Metadata ──────────────────────────────────────────────────── -->
+    <div class="zcard">
+      <div class="zcard-body">
+        <div style="font-size:15px;font-weight:600;margin-bottom:16px;">Glass Metadata</div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Glass Name *</div>
+            <input x-model="name" type="text" placeholder="e.g. Borosilicate 7740 variant" class="zinput">
+          </div>
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Source</div>
+            <select x-model="source" class="zinput">
+              <option value="experimental">Experimental</option>
+              <option value="simulation">MD/Monte-Carlo simulation</option>
+              <option value="literature">Literature</option>
+              <option value="predicted">ML predicted</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Notes</div>
+            <textarea x-model="notes" rows="4" placeholder="Sample ID, preparation conditions, reference..." class="zinput" style="resize:vertical;"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Composition ───────────────────────────────────────────────── -->
+    <div class="zcard">
+      <div class="zcard-body">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <div style="font-size:15px;font-weight:600;">Composition</div>
+          <div style="display:flex;gap:6px;">
+            <select x-model="compType" class="zinput" style="width:auto;padding:4px 8px;font-size:12px;">
+              <option value="wt_pct">wt%</option>
+              <option value="mol_pct">mol%</option>
+              <option value="at_pct">at%</option>
+            </select>
+            <button @click="normComp()"           class="zbtn zbtn-ghost zbtn-xs">Norm</button>
+            <button @click="loadPreset('sodalime')" class="zbtn zbtn-ghost zbtn-xs">SL</button>
+          </div>
+        </div>
+
+        <div class="oxide-grid" style="max-height:300px;overflow-y:auto;">
+          {% for oxide in oxides %}
+          <div class="oxide-row">
+            <label class="oxide-label">{{ oxide }}</label>
+            <input type="number" min="0" max="100" step="0.01" placeholder="0"
+              :value="comp['{{ oxide }}'] || ''"
+              @input="comp['{{ oxide }}'] = parseFloat($event.target.value) || 0"
+              class="zinput oxide-input" style="padding:4px 8px;font-size:12px;">
+          </div>
+          {% endfor %}
+        </div>
+
+        <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:12px;">
+          <span>Sum: <strong :style="Math.abs(compSum-100)<2?'color:#30d158':'color:#ffd60a'" x-text="compSum.toFixed(2)+'%'"></strong></span>
+          <span style="color:#555;" x-text="activeOxides+' oxides defined'"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Properties ────────────────────────────────────────────────── -->
+    <div class="zcard">
+      <div class="zcard-body">
+        <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Properties <span style="font-size:12px;color:#555;font-weight:400;">(optional)</span></div>
+        <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+          <input x-model="newProp.name"         type="text"   placeholder="property_name" class="zinput" style="flex:1;min-width:100px;padding:5px 8px;font-size:12px;">
+          <input x-model.number="newProp.value" type="number" step="any" placeholder="value" class="zinput" style="width:72px;padding:5px 8px;font-size:12px;">
+          <input x-model="newProp.unit"         type="text"   placeholder="unit"  class="zinput" style="width:60px;padding:5px 8px;font-size:12px;">
+          <input x-model.number="newProp.T"     type="number" step="any" placeholder="T°C" class="zinput" style="width:60px;padding:5px 8px;font-size:12px;">
+          <button @click="addProp()" class="zbtn zbtn-primary zbtn-xs">+</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
+          <button @click="addQuickProp('density_g_cm3','g/cm³')"             class="zbtn zbtn-ghost zbtn-xs">Density</button>
+          <button @click="addQuickProp('tg_celsius','°C')"                    class="zbtn zbtn-ghost zbtn-xs">Tg</button>
+          <button @click="addQuickProp('refractive_index_nD','')"             class="zbtn zbtn-ghost zbtn-xs">nD</button>
+          <button @click="addQuickProp('thermal_expansion_coeff','1e-7/°C')"  class="zbtn zbtn-ghost zbtn-xs">CTE</button>
+          <button @click="addQuickProp('youngs_modulus_GPa','GPa')"           class="zbtn zbtn-ghost zbtn-xs">E (GPa)</button>
+        </div>
+        <div style="overflow-x:auto;max-height:200px;">
+          <table class="ztable">
+            <thead><tr><th>Property</th><th>Value</th><th>Unit</th><th>T</th><th></th></tr></thead>
+            <tbody>
+              <template x-for="(p,i) in properties" :key="i">
+                <tr>
+                  <td style="font-family:monospace;font-size:12px;" x-text="p.property_name"></td>
+                  <td x-text="p.value"></td>
+                  <td style="color:#86868b;font-size:11px;" x-text="p.unit||'—'"></td>
+                  <td style="font-size:11px;" x-text="p.temperature||'—'"></td>
+                  <td><button @click="properties.splice(i,1)" class="zbtn zbtn-ghost zbtn-xs" style="color:#ff453a;">×</button></td>
+                </tr>
+              </template>
+              <tr x-show="properties.length===0">
+                <td colspan="5" style="text-align:center;color:#444;font-size:12px;padding:16px;">No properties added</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Viscosity points ───────────────────────────────────────────── -->
+    <div class="zcard">
+      <div class="zcard-body">
+        <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Viscosity Points <span style="font-size:12px;color:#555;font-weight:400;">(optional)</span></div>
+        <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+          <input x-model.number="newVisc.T"    type="number" step="any" placeholder="T (°C)"  class="zinput" style="flex:1;min-width:80px;padding:5px 8px;font-size:12px;">
+          <input x-model.number="newVisc.logv" type="number" step="any" placeholder="log₁₀ η" class="zinput" style="flex:1;min-width:80px;padding:5px 8px;font-size:12px;">
+          <input x-model="newVisc.note"        type="text"               placeholder="note"    class="zinput" style="width:80px;padding:5px 8px;font-size:12px;">
+          <button @click="addVisc()" class="zbtn zbtn-primary zbtn-xs">+</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
+          <button @click="newVisc={T:'',logv:1.0, note:'liquidus'}"  class="zbtn zbtn-ghost zbtn-xs">Liquidus</button>
+          <button @click="newVisc={T:'',logv:4.0, note:'working'}"   class="zbtn zbtn-ghost zbtn-xs">Working</button>
+          <button @click="newVisc={T:'',logv:6.6, note:'softening'}" class="zbtn zbtn-ghost zbtn-xs">Softening</button>
+          <button @click="newVisc={T:'',logv:12.0,note:'annealing'}" class="zbtn zbtn-ghost zbtn-xs">Annealing</button>
+        </div>
+        <div style="overflow-x:auto;max-height:160px;">
+          <table class="ztable">
+            <thead><tr><th>T (°C)</th><th>log η</th><th>Note</th><th></th></tr></thead>
+            <tbody>
+              <template x-for="(v,i) in viscPoints" :key="i">
+                <tr>
+                  <td style="font-family:monospace;" x-text="v.temperature"></td>
+                  <td style="font-family:monospace;" x-text="v.log_visc"></td>
+                  <td style="font-size:11px;color:#86868b;" x-text="v.notes||'—'"></td>
+                  <td><button @click="viscPoints.splice(i,1)" class="zbtn zbtn-ghost zbtn-xs" style="color:#ff453a;">×</button></td>
+                </tr>
+              </template>
+              <tr x-show="viscPoints.length===0">
+                <td colspan="4" style="text-align:center;color:#444;font-size:12px;padding:16px;">No viscosity data added</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Submit ──────────────────────────────────────────────────────── -->
+  <div style="margin-top:16px;display:flex;gap:10px;align-items:center;">
+    <button @click="submit()" class="zbtn zbtn-primary" :disabled="loading || !name || compSum < 5">
+      <span x-show="loading" class="zspin" style="width:14px;height:14px;"></span>
+      Save Glass to Database
+    </button>
+    <button @click="resetForm()" class="zbtn zbtn-ghost">Reset</button>
+    <div x-show="error" class="zalert zalert-error" style="flex:1;font-size:12px;" x-text="error"></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════  MY GLASSES LIBRARY  ════════════════════════════════════ -->
+<div x-data="myGlasses()" style="max-width:960px;margin-top:28px;">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <div style="font-size:18px;font-weight:700;">My Glass Library</div>
+    <button @click="load()" class="zbtn zbtn-ghost zbtn-sm">↻ Refresh</button>
+  </div>
+
+  <div class="zcard">
+    <div class="zcard-body" style="padding:0;">
+      <div x-show="glasses.length === 0" style="padding:40px;text-align:center;color:#555;font-size:14px;">
+        No glasses saved yet. Add your first glass above.
+      </div>
+      <div x-show="glasses.length > 0" style="overflow-x:auto;">
+        <table class="ztable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Source</th>
+              <th>Oxides</th>
+              <th>Properties</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="g in glasses" :key="g.id">
+              <tr>
+                <td style="font-family:monospace;color:#555;" x-text="g.id"></td>
+                <td style="font-weight:500;"><a :href="`/glass/${g.id}?source=user`" style="color:#2997ff;text-decoration:none;" x-text="g.name"></a></td>
+                <td><span class="zbadge zbadge-gray" style="font-size:10px;" x-text="g.source"></span></td>
+                <td style="font-size:12px;" x-text="g.n_oxides + ' oxides'"></td>
+                <td style="font-size:12px;" x-text="g.n_props + ' props'"></td>
+                <td style="font-size:11px;color:#555;" x-text="g.created_at?.split('T')[0] || g.created_at?.slice(0,10)"></td>
+                <td>
+                  <button @click="deleteGlass(g.id, g.name)" class="zbtn zbtn-ghost zbtn-xs" style="color:#ff453a;" title="Delete">🗑</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════  CSV BULK IMPORT  ════════════════════════════════════════ -->
+<div x-data="csvImporter()" style="max-width:960px;margin-top:28px;">
+
+  <div style="font-size:18px;font-weight:700;margin-bottom:6px;">Bulk Import from CSV</div>
+  <div style="font-size:13px;color:#86868b;margin-bottom:16px;">
+    Import an entire company database, lab spreadsheet, or literature dataset in seconds. Each row becomes a saved glass.
+  </div>
+
+  <!-- Format guide -->
+  <div class="zcard" style="margin-bottom:14px;border-color:rgba(41,151,255,0.2);">
+    <div class="zcard-body" style="padding:18px 24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-size:14px;font-weight:600;">📋 CSV Format Guide</div>
+        <a href="/api/add-glass/csv-template" class="zbtn zbtn-primary zbtn-xs">⬇ Download template</a>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;">
+        <div>
+          <div style="font-size:11px;color:#86868b;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Required columns</div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <div style="background:#1a1a1a;border-radius:7px;padding:8px 12px;font-size:12px;">
+              <code style="color:#2997ff;">name</code>
+              <span style="color:#86868b;margin-left:8px;">Glass identifier (any text)</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#86868b;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Optional meta columns</div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <div style="background:#1a1a1a;border-radius:7px;padding:6px 12px;font-size:12px;">
+              <code style="color:#ffd60a;">source</code>
+              <span style="color:#555;margin-left:6px;">experimental / simulation / literature</span>
+            </div>
+            <div style="background:#1a1a1a;border-radius:7px;padding:6px 12px;font-size:12px;">
+              <code style="color:#ffd60a;">comp_type</code>
+              <span style="color:#555;margin-left:6px;">wt_pct / mol_pct / at_pct</span>
+            </div>
+            <div style="background:#1a1a1a;border-radius:7px;padding:6px 12px;font-size:12px;">
+              <code style="color:#ffd60a;">notes</code>
+              <span style="color:#555;margin-left:6px;">Free-text note</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;">
+        <div>
+          <div style="font-size:11px;color:#86868b;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Oxide columns (any subset)</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;">
+            {% for oxide in oxides %}
+            <code style="background:#1a1a1a;border-radius:4px;padding:2px 6px;font-size:10px;color:#30d158;">{{ oxide }}</code>
+            {% endfor %}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#86868b;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Property columns (any)</div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="font-size:12px;color:#86868b;">Any other column is treated as a property measurement. Common examples:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+              <code style="background:#1a1a1a;border-radius:4px;padding:2px 6px;font-size:10px;color:#bf5af2;">density</code>
+              <code style="background:#1a1a1a;border-radius:4px;padding:2px 6px;font-size:10px;color:#bf5af2;">tg_celsius</code>
+              <code style="background:#1a1a1a;border-radius:4px;padding:2px 6px;font-size:10px;color:#bf5af2;">refractive_index_nD</code>
+              <code style="background:#1a1a1a;border-radius:4px;padding:2px 6px;font-size:10px;color:#bf5af2;">thermal_expansion_coeff</code>
+              <code style="background:#1a1a1a;border-radius:4px;padding:2px 6px;font-size:10px;color:#bf5af2;">youngs_modulus_GPa</code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Example CSV -->
+      <div style="font-size:11px;color:#86868b;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Example</div>
+      <pre style="background:#0a0a0a;border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:12px 14px;font-size:11px;color:#86868b;overflow-x:auto;margin:0;line-height:1.7;"><span style="color:#2997ff;">name</span>,<span style="color:#ffd60a;">source</span>,<span style="color:#ffd60a;">notes</span>,<span style="color:#ffd60a;">comp_type</span>,<span style="color:#30d158;">SiO2</span>,<span style="color:#30d158;">Na2O</span>,<span style="color:#30d158;">CaO</span>,<span style="color:#30d158;">MgO</span>,<span style="color:#30d158;">Al2O3</span>,<span style="color:#bf5af2;">density</span>,<span style="color:#bf5af2;">tg_celsius</span>
+<span style="color:#f5f5f7;">Soda-lime std</span>,experimental,Batch 42,wt_pct,72.5,12.8,9.1,3.9,1.1,2.49,557
+<span style="color:#f5f5f7;">BSil 7740</span>,literature,Corning,wt_pct,80.5,4.0,0,0,2.5,2.23,525
+<span style="color:#f5f5f7;">R&amp;D sample A</span>,experimental,,mol_pct,65.0,15.0,12.0,8.0,0,,,</pre>
+      <div style="margin-top:8px;font-size:11px;color:#555;">
+        💡 Empty cells are ignored. Leave property columns empty if not measured. Column order doesn't matter.
+      </div>
+    </div>
+  </div>
+
+  <!-- File upload + actions -->
+  <div class="zcard" style="margin-bottom:14px;">
+    <div class="zcard-body">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <input @change="fileSelected($event)" type="file" accept=".csv,.txt" id="csv-import-input" style="display:none;">
+        <label for="csv-import-input" class="zbtn zbtn-secondary" style="cursor:pointer;">
+          📁 Choose CSV file
+        </label>
+        <div x-show="file" style="font-size:13px;color:#86868b;" x-text="file?.name + ' (' + (file?.size/1024).toFixed(1) + ' KB)'"></div>
+        <button @click="preview()" class="zbtn zbtn-ghost zbtn-sm" :disabled="!file||loading">
+          <span x-show="loading" class="zspin" style="width:12px;height:12px;"></span>
+          Preview
+        </button>
+        <button @click="importAll()" class="zbtn zbtn-primary zbtn-sm" :disabled="!previewData||loading||previewData.n_parsed===0">
+          <span x-show="importing" class="zspin" style="width:12px;height:12px;"></span>
+          <span x-show="!importing" x-text="previewData ? `Import all ${previewData.n_parsed} glasses` : 'Import'"></span>
+        </button>
+      </div>
+
+      <!-- Parse errors -->
+      <div x-show="previewData?.errors?.length" class="zalert zalert-warn" style="margin-top:12px;font-size:12px;">
+        <div style="font-weight:600;margin-bottom:4px;" x-text="`${previewData.errors.length} row(s) skipped:`"></div>
+        <ul style="margin:0;padding-left:18px;">
+          <template x-for="e in previewData.errors" :key="e">
+            <li x-text="e"></li>
+          </template>
+        </ul>
+      </div>
+
+      <!-- Import result -->
+      <div x-show="importResult" class="zalert zalert-success" style="margin-top:12px;font-size:13px;">
+        ✅ <span x-text="`${importResult?.saved} glasses saved successfully.`"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview table -->
+  <div x-show="previewData?.glasses?.length" class="zcard">
+    <div class="zcard-body" style="padding:0;">
+      <div style="padding:14px 20px 10px;font-size:13px;font-weight:600;">
+        Preview — <span x-text="previewData.n_parsed"></span> glasses parsed
+        <span x-show="previewData.n_errors" style="color:#ffd60a;font-weight:400;margin-left:8px;" x-text="`(${previewData.n_errors} errors)`"></span>
+      </div>
+      <div style="overflow-x:auto;max-height:360px;">
+        <table class="ztable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Source</th>
+              <th>Type</th>
+              <th>Oxides</th>
+              <th>Properties</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="(g, i) in (previewData?.glasses || [])" :key="i">
+              <tr>
+                <td style="color:#555;font-size:11px;" x-text="i+1"></td>
+                <td style="font-weight:500;" x-text="g.name"></td>
+                <td><span class="zbadge zbadge-gray" style="font-size:10px;" x-text="g.source"></span></td>
+                <td><span class="zbadge zbadge-blue" style="font-size:10px;" x-text="g.compositions[0]?.comp_type||'?'"></span></td>
+                <td>
+                  <div style="display:flex;flex-wrap:wrap;gap:3px;">
+                    <template x-for="c in g.compositions.filter(c=>c.value>0).slice(0,5)" :key="c.oxide">
+                      <span class="zbadge zbadge-blue" style="font-size:9px;" x-text="`${c.oxide} ${c.value}`"></span>
+                    </template>
+                    <span x-show="g.compositions.length>5" class="zbadge zbadge-gray" style="font-size:9px;"
+                          x-text="`+${g.compositions.length-5}`"></span>
+                  </div>
+                </td>
+                <td>
+                  <div style="display:flex;flex-wrap:wrap;gap:3px;">
+                    <template x-for="p in g.properties.slice(0,3)" :key="p.property_name">
+                      <span class="zbadge zbadge-purple" style="font-size:9px;" x-text="`${p.property_name}: ${p.value}`"></span>
+                    </template>
+                    <span x-show="g.properties.length>3" class="zbadge zbadge-gray" style="font-size:9px;"
+                          x-text="`+${g.properties.length-3}`"></span>
+                    <span x-show="!g.properties.length" style="font-size:11px;color:#555;">—</span>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════  DATABASE MANAGEMENT  ══════════════════════════════════ -->
+<div x-data="dbManager()" style="max-width:960px;margin-top:28px;">
+
+  <div style="font-size:18px;font-weight:700;margin-bottom:6px;">Database Management</div>
+  <div style="font-size:13px;color:#86868b;margin-bottom:16px;">
+    Save your experimental glass library to a local file for backup, confidential research archiving, or transfer to another machine. All data stays on your computer.
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+
+    <!-- Export JSON -->
+    <div class="zcard" style="border-color:rgba(48,209,88,0.2);">
+      <div class="zcard-body">
+        <div style="width:40px;height:40px;border-radius:10px;background:rgba(48,209,88,0.1);display:flex;align-items:center;justify-content:center;margin-bottom:14px;font-size:20px;">📦</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">Export as JSON</div>
+        <div style="font-size:12px;color:#86868b;margin-bottom:16px;line-height:1.6;">
+          Download all your glasses as a portable <code style="background:#1a1a1a;padding:1px 5px;border-radius:4px;">.json</code> file. Human-readable, version-controlled friendly, easy to share selectively.
+        </div>
+        <a href="/api/user-data/export-json" class="zbtn zbtn-primary zbtn-sm" style="display:block;text-align:center;text-decoration:none;background:#30d158;color:#000;">
+          ⬇ Download JSON backup
+        </a>
+      </div>
+    </div>
+
+    <!-- Export SQLite -->
+    <div class="zcard" style="border-color:rgba(41,151,255,0.2);">
+      <div class="zcard-body">
+        <div style="width:40px;height:40px;border-radius:10px;background:rgba(41,151,255,0.1);display:flex;align-items:center;justify-content:center;margin-bottom:14px;font-size:20px;">🗄️</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">Export as SQLite</div>
+        <div style="font-size:12px;color:#86868b;margin-bottom:16px;line-height:1.6;">
+          Download the raw <code style="background:#1a1a1a;padding:1px 5px;border-radius:4px;">user_data.db</code> SQLite file. Use with any SQLite browser, Python, or R for direct programmatic access.
+        </div>
+        <a href="/api/user-data/export-sqlite" class="zbtn zbtn-primary zbtn-sm" style="display:block;text-align:center;text-decoration:none;">
+          ⬇ Download SQLite file
+        </a>
+      </div>
+    </div>
+
+    <!-- Import JSON -->
+    <div class="zcard" style="border-color:rgba(255,214,10,0.2);">
+      <div class="zcard-body">
+        <div style="width:40px;height:40px;border-radius:10px;background:rgba(255,214,10,0.1);display:flex;align-items:center;justify-content:center;margin-bottom:14px;font-size:20px;">📂</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">Import JSON backup</div>
+        <div style="font-size:12px;color:#86868b;margin-bottom:12px;line-height:1.6;">
+          Restore from a previous JSON export. Choose whether to <strong style="color:#f5f5f7;">merge</strong> with existing data or <strong style="color:#ff453a;">replace</strong> it entirely.
+        </div>
+
+        <!-- Mode selector -->
+        <div style="display:flex;gap:10px;margin-bottom:12px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+            <input type="radio" value="merge" x-model="importMode" style="accent-color:#2997ff;">
+            <span>Merge <span style="color:#555;">(keep existing)</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+            <input type="radio" value="replace" x-model="importMode" style="accent-color:#ff453a;">
+            <span style="color:#ff453a;">Replace all</span>
+          </label>
+        </div>
+
+        <!-- File picker -->
+        <input @change="fileSelected($event)" type="file" accept=".json" id="import-file-input"
+          style="display:none;">
+        <label for="import-file-input" class="zbtn zbtn-secondary zbtn-sm"
+          style="display:block;text-align:center;cursor:pointer;margin-bottom:8px;">
+          📁 Choose file…
+        </label>
+        <div x-show="selectedFile" style="font-size:11px;color:#86868b;text-align:center;margin-bottom:8px;" x-text="selectedFile?.name"></div>
+
+        <button @click="doImport()" class="zbtn zbtn-ghost zbtn-sm" style="width:100%;"
+          :disabled="!selectedFile || importing"
+          :style="importMode==='replace' ? 'color:#ff453a;' : ''">
+          <span x-show="importing" class="zspin" style="width:12px;height:12px;"></span>
+          <span x-show="!importing" x-text="importMode==='replace' ? '⚠ Replace & Import' : '↑ Merge & Import'"></span>
+        </button>
+
+        <!-- Confirm replace -->
+        <div x-show="importMode==='replace' && selectedFile && !importing"
+          class="zalert zalert-warn" style="margin-top:10px;font-size:11px;">
+          ⚠ This will <strong>permanently delete</strong> all current user glasses before importing.
+        </div>
+
+        <div x-show="importResult" class="zalert" :class="importResult?.errors?.length ? 'zalert-warn' : 'zalert-success'" style="margin-top:10px;font-size:12px;">
+          <span x-text="`Imported ${importResult?.imported} glasses.`"></span>
+          <span x-show="importResult?.errors?.length" style="color:#ffd60a;" x-text="` ${importResult.errors.length} errors.`"></span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Confidentiality notice -->
+  <div style="margin-top:14px;display:flex;align-items:flex-start;gap:10px;padding:14px 18px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.06);">
+    <span style="font-size:18px;flex-shrink:0;">🔒</span>
+    <div style="font-size:12px;color:#86868b;line-height:1.7;">
+      <strong style="color:#f5f5f7;">Your data is completely private.</strong>
+      Zach V1 runs entirely on your local machine — no data is ever transmitted to any server or cloud service.
+      Your experimental glasses, compositions, and property measurements are stored in
+      <code style="background:#1a1a1a;padding:1px 5px;border-radius:4px;">user_data.db</code> on your hard drive only.
+      The JSON export is ideal for confidential R&amp;D archives, lab notebooks, and team sharing over secure channels.
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ── Add Glass ─────────────────────────────────────────────────────────── */
+function addGlass() {
+  return {
+    name:'', source:'experimental', notes:'',
+    compType:'wt_pct', comp:{},
+    properties:[], newProp:{name:'',value:'',unit:'',T:''},
+    viscPoints:[], newVisc:{T:'',logv:'',note:''},
+    loading:false, error:'', saved:false, savedId:null,
+
+    get compSum()      { return Object.values(this.comp).reduce((a,b)=>a+(b||0),0); },
+    get activeOxides() { return Object.values(this.comp).filter(v=>v>0).length; },
+
+    normComp() {
+      const s=this.compSum; if(!s) return;
+      for(const k in this.comp) if(this.comp[k]) this.comp[k]=parseFloat((this.comp[k]*100/s).toFixed(3));
+    },
+    loadPreset(name) {
+      const P={sodalime:{SiO2:72.5,Na2O:12.8,CaO:9.1,MgO:3.9,Al2O3:1.1,K2O:0.6}};
+      this.comp={...P[name]};
+    },
+    addProp() {
+      if(!this.newProp.name||this.newProp.value==='') return;
+      this.properties.push({property_name:this.newProp.name,value:this.newProp.value,unit:this.newProp.unit||'',temperature:this.newProp.T||null});
+      this.newProp={name:'',value:'',unit:'',T:''};
+    },
+    addQuickProp(name,unit){ this.newProp.name=name; this.newProp.unit=unit; },
+    addVisc() {
+      if(this.newVisc.T===''||this.newVisc.logv==='') return;
+      this.viscPoints.push({temperature:this.newVisc.T,log_visc:this.newVisc.logv,notes:this.newVisc.note});
+      this.newVisc={T:'',logv:'',note:''};
+    },
+    async submit() {
+      this.loading=true; this.error='';
+      const compositions=Object.entries(this.comp).filter(([,v])=>v>0)
+        .map(([oxide,value])=>({oxide,value,comp_type:this.compType}));
+      const res=await fetch('/api/add-glass',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({name:this.name,source:this.source,notes:this.notes,
+          compositions,properties:this.properties,visc_points:this.viscPoints})
+      });
+      const j=await res.json();
+      this.loading=false;
+      if(j.ok){ this.saved=true; this.savedId=j.data.id; window.scrollTo(0,0);
+                // refresh library
+                document.querySelectorAll('[x-data]').forEach(el=>{ if(el._x_dataStack?.[0]?.load) el._x_dataStack[0].load(); }); }
+      else this.error=j.error;
+    },
+    resetForm(){ this.name='';this.notes='';this.comp={};this.properties=[];this.viscPoints=[];this.saved=false;this.savedId=null;this.error=''; }
+  };
+}
+
+/* ── My Glasses library ─────────────────────────────────────────────────── */
+function myGlasses() {
+  return {
+    glasses: [],
+    async load() {
+      const res=await fetch('/api/user-glasses');
+      const j=await res.json();
+      if(j.ok) this.glasses=j.data;
+    },
+    async deleteGlass(id, name) {
+      if(!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+      const res=await fetch(`/api/user-data/delete/${id}`,{method:'DELETE'});
+      const j=await res.json();
+      if(j.ok) this.glasses=this.glasses.filter(g=>g.id!==id);
+      else alert('Delete failed: '+j.error);
+    },
+    init(){ this.load(); }
+  };
+}
+
+/* ── CSV Importer ──────────────────────────────────────────────────────── */
+function csvImporter() {
+  return {
+    file: null, loading: false, importing: false,
+    previewData: null, importResult: null,
+
+    fileSelected(e) {
+      this.file = e.target.files[0] || null;
+      this.previewData = null; this.importResult = null;
+    },
+
+    async preview() {
+      if (!this.file) return;
+      this.loading = true;
+      const fd = new FormData(); fd.append('file', this.file);
+      const res = await fetch('/api/add-glass/csv-preview', {method:'POST', body:fd});
+      const j = await res.json();
+      this.loading = false;
+      if (j.ok) this.previewData = j.data;
+      else alert('Parse error: ' + j.error);
+    },
+
+    async importAll() {
+      if (!this.file) return;
+      if (!confirm(`Import ${this.previewData.n_parsed} glasses into your database?`)) return;
+      this.importing = true;
+      const fd = new FormData(); fd.append('file', this.file);
+      const res = await fetch('/api/add-glass/csv-import', {method:'POST', body:fd});
+      const j = await res.json();
+      this.importing = false;
+      if (j.ok) {
+        this.importResult = j.data;
+        this.file = null; this.previewData = null;
+        document.getElementById('csv-import-input').value = '';
+        // refresh library
+        document.querySelectorAll('[x-data]').forEach(el=>{ if(el._x_dataStack?.[0]?.load) el._x_dataStack[0].load(); });
+      } else alert('Import failed: ' + j.error);
+    }
+  };
+}
+
+/* ── DB Manager ────────────────────────────────────────────────────────── */
+function dbManager() {
+  return {
+    importMode: 'merge',
+    selectedFile: null,
+    importing: false,
+    importResult: null,
+
+    fileSelected(e) {
+      this.selectedFile = e.target.files[0] || null;
+      this.importResult = null;
+    },
+
+    async doImport() {
+      if(!this.selectedFile) return;
+      if(this.importMode==='replace' && !confirm('This will permanently delete ALL your current user glasses and replace them with the import file.\n\nAre you sure?')) return;
+      this.importing=true; this.importResult=null;
+      const fd=new FormData();
+      fd.append('file', this.selectedFile);
+      const res=await fetch(`/api/user-data/import-json?mode=${this.importMode}`,{method:'POST',body:fd});
+      const j=await res.json();
+      this.importing=false;
+      if(j.ok) {
+        this.importResult=j.data;
+        this.selectedFile=null;
+        document.getElementById('import-file-input').value='';
+        // reload library
+        document.querySelectorAll('[x-data]').forEach(el=>{ if(el._x_dataStack?.[0]?.load) el._x_dataStack[0].load(); });
+      } else {
+        this.importResult={imported:0, errors:[j.error]};
+      }
+    }
+  };
+}
+</script>
+{% endblock %}

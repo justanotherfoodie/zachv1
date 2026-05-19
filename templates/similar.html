@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% block title %}Similarity Search — Zach V1{% endblock %}
+{% block page_title %}Nearest-Neighbor Similarity Search{% endblock %}
+
+{% block content %}
+<div x-data="similarApp()">
+
+  <div style="display:grid;grid-template-columns:320px 1fr;gap:16px;align-items:start;">
+
+    <!-- ── Input panel ─────────────────────────────────────────────────────── -->
+    <div style="display:flex;flex-direction:column;gap:12px;position:sticky;top:68px;">
+
+      <div class="zcard">
+        <div class="zcard-body">
+          <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Target Composition</div>
+          <div style="font-size:12px;color:#86868b;margin-bottom:14px;">Enter non-zero oxides — values will be normalised to 100%.</div>
+
+          <!-- Comp type -->
+          <div style="margin-bottom:14px;">
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Composition type</div>
+            <select x-model="compType" class="zinput">
+              <option value="mol_pct">mol%</option>
+              <option value="wt_pct">wt%</option>
+            </select>
+          </div>
+
+          <!-- Oxide grid (only show most common, rest expandable) -->
+          <div class="oxide-grid" style="margin-bottom:10px;">
+            {% for oxide in oxides %}
+            <div class="oxide-row">
+              <span class="oxide-label">{{ oxide }}</span>
+              <input x-model.number="comp['{{ oxide }}']"
+                     type="number" min="0" max="100" step="0.1"
+                     class="zinput oxide-input" style="padding:4px 8px;font-size:12px;"
+                     placeholder="0">
+            </div>
+            {% endfor %}
+          </div>
+
+          <!-- Number of results -->
+          <div style="margin-bottom:14px;">
+            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Results to return</div>
+            <select x-model.number="nResults" class="zinput">
+              <option value="10">10 glasses</option>
+              <option value="15" selected>15 glasses</option>
+              <option value="25">25 glasses</option>
+              <option value="50">50 glasses</option>
+            </select>
+          </div>
+
+          <button @click="search()" class="zbtn zbtn-primary" style="width:100%;" :disabled="loading">
+            <span x-show="loading" class="zspin" style="width:14px;height:14px;"></span>
+            Find Similar Glasses
+          </button>
+
+          <!-- Quick presets -->
+          <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.07);padding-top:12px;">
+            <div style="font-size:11px;color:#86868b;margin-bottom:8px;">Quick presets</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              <button @click="loadPreset('soda_lime')" class="zbtn zbtn-ghost zbtn-xs">Soda-Lime</button>
+              <button @click="loadPreset('borosilicate')" class="zbtn zbtn-ghost zbtn-xs">Borosilicate</button>
+              <button @click="loadPreset('aluminosilicate')" class="zbtn zbtn-ghost zbtn-xs">Aluminosilicate</button>
+              <button @click="loadPreset('phosphate')" class="zbtn zbtn-ghost zbtn-xs">Phosphate</button>
+              <button @click="resetComp()" class="zbtn zbtn-ghost zbtn-xs" style="color:#ff453a;">Clear</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- How it works -->
+      <div class="zcard">
+        <div class="zcard-body">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;">How it works</div>
+          <div style="font-size:12px;color:#86868b;line-height:1.7;">
+            Compositions are first normalised to 100%. Similarity is measured as <strong style="color:#f5f5f7;">Euclidean distance</strong> in composition space, filtered to glasses sharing your major oxide system.
+            <br><br>
+            <strong style="color:#f5f5f7;">100% = identical</strong> composition. Glasses above 90% are very close analogues.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Results panel ──────────────────────────────────────────────────── -->
+    <div>
+      <!-- Empty state -->
+      <div x-show="!searched && !loading" class="zcard">
+        <div class="zcard-body" style="display:flex;align-items:center;justify-content:center;height:300px;flex-direction:column;gap:12px;color:#444;">
+          <div style="font-size:48px;">◎</div>
+          <div style="font-size:14px;">Enter a composition and click Find Similar Glasses</div>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div x-show="loading" class="zcard">
+        <div class="zcard-body" style="display:flex;align-items:center;justify-content:center;height:300px;flex-direction:column;gap:12px;">
+          <span class="zspin" style="width:40px;height:40px;"></span>
+          <div style="font-size:13px;color:#86868b;">Searching SciGlass database…</div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <template x-if="searched && !loading && results.length">
+        <div style="display:flex;flex-direction:column;gap:12px;">
+
+          <!-- Summary bar -->
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="font-size:13px;color:#86868b;">
+              Found <strong style="color:#f5f5f7;" x-text="results.length"></strong> similar glasses
+              <span style="font-size:11px;margin-left:6px;color:#555;"
+                    x-text="`(top match: ${results[0]?.similarity_pct?.toFixed(1)}% similar)`"></span>
+            </div>
+            <div style="font-size:11px;color:#555;" x-text="`Query: ${queryLabel}`"></div>
+          </div>
+
+          <!-- Result cards -->
+          <template x-for="(g,i) in results" :key="g.id">
+            <div class="zcard" style="transition:border-color .2s;"
+                 :style="i===0?'border-color:rgba(41,151,255,0.35);':''">
+              <div class="zcard-body" style="padding:16px 20px;">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+
+                  <!-- Left: rank + similarity bar -->
+                  <div style="flex-shrink:0;width:52px;text-align:center;">
+                    <div style="font-size:20px;font-weight:800;line-height:1;margin-bottom:4px;"
+                         :style="i===0?'color:#2997ff;':i<3?'color:#30d158;':'color:#86868b;'"
+                         x-text="`#${i+1}`"></div>
+                    <div style="font-size:10px;color:#86868b;margin-bottom:6px;">rank</div>
+                    <!-- Similarity arc / bar -->
+                    <div style="font-size:13px;font-weight:700;"
+                         :style="g.similarity_pct>90?'color:#30d158;':g.similarity_pct>70?'color:#ffd60a;':'color:#ff453a;'"
+                         x-text="`${g.similarity_pct?.toFixed(1)}%`"></div>
+                    <div style="font-size:9px;color:#555;">similar</div>
+                  </div>
+
+                  <!-- Center: composition + properties -->
+                  <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                      <span style="font-size:13px;font-weight:600;color:#f5f5f7;" x-text="`Glass #${g.id}`"></span>
+                      <span class="zbadge zbadge-gray" x-text="g.comp_type==='mol_pct'?'mol%':'wt%'"></span>
+                      <template x-if="i===0">
+                        <span class="zbadge zbadge-blue">Best match</span>
+                      </template>
+                    </div>
+
+                    <!-- Composition breakdown -->
+                    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
+                      <template x-for="ox in topOxides(g.composition)" :key="ox.name">
+                        <span style="background:rgba(255,255,255,0.06);border-radius:5px;padding:2px 8px;font-size:11px;font-family:monospace;"
+                              x-text="`${ox.name}: ${ox.val?.toFixed(1)}%`"></span>
+                      </template>
+                    </div>
+
+                    <!-- Properties row -->
+                    <div x-show="g.properties && Object.keys(g.properties).length" style="display:flex;flex-wrap:wrap;gap:10px;">
+                      <template x-for="[pk,pv] in Object.entries(g.properties||{})" :key="pk">
+                        <div style="font-size:11px;">
+                          <span style="color:#86868b;" x-text="propLabel(pk)+': '"></span>
+                          <span style="font-family:monospace;font-weight:600;" x-text="pv?.toFixed(4)"></span>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+
+                  <!-- Right: similarity bar + link -->
+                  <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+                    <!-- Visual similarity bar -->
+                    <div style="width:80px;height:6px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;">
+                      <div :style="`width:${g.similarity_pct}%;height:100%;border-radius:3px;background:${g.similarity_pct>90?'#30d158':g.similarity_pct>70?'#ffd60a':'#ff453a'};`"></div>
+                    </div>
+                    <a :href="`/glass/${g.id}`" class="zbtn zbtn-secondary zbtn-xs" style="text-decoration:none;">
+                      View glass →
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+        </div>
+      </template>
+
+      <!-- No results -->
+      <div x-show="searched && !loading && results.length===0" class="zalert zalert-warn" style="margin-top:8px;">
+        No similar glasses found. Try a different composition or relaxing the major-oxide filter.
+      </div>
+    </div>
+
+  </div>
+
+  <div x-show="error" class="zalert zalert-error" style="margin-top:12px;" x-text="error"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PROP_LABELS_S = {
+  density:'Density (g/cm³)', tg_celsius:'Tg (°C)',
+  thermal_expansion_coeff:'CTE (×10⁻⁷/°C)',
+  refractive_index_nD:'nD', liquidus_temp:'Liquidus (°C)',
+};
+
+const PRESETS = {
+  soda_lime:       {SiO2:72, Na2O:14, CaO:10, MgO:2, Al2O3:1.5},
+  borosilicate:    {SiO2:80.5, B2O3:12.9, Na2O:3.8, Al2O3:2.2},
+  aluminosilicate: {SiO2:57, Al2O3:20, CaO:12, MgO:7, K2O:2},
+  phosphate:       {P2O5:60, Al2O3:20, Na2O:10, CaO:8},
+};
+
+const ALL_OXIDES = {{ oxides | tojson }};
+
+function similarApp() {
+  const initComp = {};
+  ALL_OXIDES.forEach(o => initComp[o] = 0);
+
+  return {
+    comp: {...initComp},
+    compType: 'mol_pct',
+    nResults: 15,
+    loading: false,
+    searched: false,
+    results: [],
+    error: '',
+    queryLabel: '',
+
+    async search() {
+      // Build composition dict (non-zero only)
+      const composition = {};
+      for(const [k, v] of Object.entries(this.comp)) {
+        const f = parseFloat(v);
+        if(!isNaN(f) && f > 0) composition[k] = f;
+      }
+      if(!Object.keys(composition).length) {
+        this.error = 'Please enter at least one oxide value.'; return;
+      }
+      this.error = '';
+      this.loading = true;
+
+      // Build a readable label for the query
+      const total = Object.values(composition).reduce((a,b)=>a+b,0);
+      this.queryLabel = Object.entries(composition)
+        .sort((a,b)=>b[1]-a[1]).slice(0,4)
+        .map(([k,v])=>`${k} ${(v/total*100).toFixed(1)}%`).join(', ');
+
+      const res = await fetch('/api/similar', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({composition, comp_type: this.compType, n: this.nResults}),
+      });
+      const j = await res.json();
+      this.loading = false;
+      if(!j.ok){ this.error = j.error; return; }
+      // Normalise API response: convert arrays → dicts for easy template access
+      this.results = (j.data || []).map(g => {
+        const compDict = {};
+        (g.compositions || []).forEach(c => { compDict[c.oxide] = c.value; });
+        const propDict = {};
+        (g.properties || []).forEach(p => { propDict[p.property_name] = p.value; });
+        return {
+          ...g,
+          comp_type: g.compositions?.[0]?.comp_type || this.compType,
+          composition: compDict,
+          properties: propDict,
+        };
+      });
+      this.searched = true;
+    },
+
+    loadPreset(name) {
+      // Reset all
+      ALL_OXIDES.forEach(o => this.comp[o] = 0);
+      const p = PRESETS[name] || {};
+      Object.assign(this.comp, p);
+    },
+
+    resetComp() {
+      ALL_OXIDES.forEach(o => this.comp[o] = 0);
+      this.results = []; this.searched = false; this.error = '';
+    },
+
+    topOxides(comp) {
+      if(!comp) return [];
+      return Object.entries(comp)
+        .filter(([,v]) => v > 0.1)
+        .sort((a,b) => b[1]-a[1])
+        .slice(0, 8)
+        .map(([name, val]) => ({name, val}));
+    },
+
+    propLabel(k) { return PROP_LABELS_S[k] || k.replace(/_/g,' '); },
+  };
+}
+</script>
+{% endblock %}

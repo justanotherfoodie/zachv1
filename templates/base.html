@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Zach V1{% endblock %}</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Plotly.js -->
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            z: {
+              bg:       '#000000',
+              card:     '#111111',
+              card2:    '#1a1a1a',
+              border:   'rgba(255,255,255,0.09)',
+              borderhv: 'rgba(255,255,255,0.18)',
+              text:     '#f5f5f7',
+              muted:    '#86868b',
+              blue:     '#2997ff',
+              bluehv:   '#5aabff',
+              green:    '#30d158',
+              yellow:   '#ffd60a',
+              red:      '#ff453a',
+              purple:   '#bf5af2',
+            }
+          },
+          fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
+          borderRadius: { xl2: '16px', xl3: '20px' },
+        }
+      }
+    }
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: #000;
+      color: #f5f5f7;
+      font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Sidebar ─────────────────────────────── */
+    #sidebar {
+      width: 220px;
+      min-height: 100vh;
+      position: fixed;
+      top: 0; left: 0;
+      background: rgba(10,10,10,0.92);
+      border-right: 1px solid rgba(255,255,255,0.07);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #main { margin-left: 220px; min-height: 100vh; }
+
+    /* ── Nav links ───────────────────────────── */
+    .nav-link {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 8px;
+      font-size: 13px; font-weight: 500;
+      color: #86868b;
+      transition: color .15s, background .15s;
+      cursor: pointer; text-decoration: none;
+    }
+    .nav-link:hover { color: #f5f5f7; background: rgba(255,255,255,0.06); }
+    .nav-link.active { color: #f5f5f7; background: rgba(41,151,255,0.15); }
+    .nav-link.active .nav-icon { color: #2997ff; }
+    .nav-icon { width: 16px; height: 16px; flex-shrink: 0; }
+
+    /* ── Cards ───────────────────────────────── */
+    .zcard {
+      background: #111;
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 16px;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .zcard:hover { border-color: rgba(255,255,255,0.14); }
+    .zcard-body { padding: 24px; }
+    .zcard-sm .zcard-body { padding: 16px; }
+
+    /* ── Inputs ──────────────────────────────── */
+    .zinput {
+      background: #1a1a1a;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      color: #f5f5f7;
+      font-size: 13px;
+      padding: 8px 12px;
+      outline: none;
+      transition: border-color .15s;
+      width: 100%;
+    }
+    .zinput:focus { border-color: #2997ff; box-shadow: 0 0 0 3px rgba(41,151,255,0.15); }
+    .zinput::placeholder { color: #555; }
+    select.zinput option { background: #1a1a1a; }
+
+    /* ── Buttons ─────────────────────────────── */
+    .zbtn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 18px; border-radius: 8px; font-size: 13px;
+      font-weight: 600; cursor: pointer; border: none;
+      transition: opacity .15s, transform .1s;
+    }
+    .zbtn:active { transform: scale(.97); }
+    .zbtn:disabled { opacity: .4; cursor: not-allowed; }
+    .zbtn-primary { background: #2997ff; color: #fff; }
+    .zbtn-primary:hover:not(:disabled) { background: #5aabff; }
+    .zbtn-secondary { background: rgba(255,255,255,0.1); color: #f5f5f7; }
+    .zbtn-secondary:hover:not(:disabled) { background: rgba(255,255,255,0.16); }
+    .zbtn-ghost { background: transparent; color: #86868b; }
+    .zbtn-ghost:hover:not(:disabled) { color: #f5f5f7; background: rgba(255,255,255,0.06); }
+    .zbtn-sm { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
+    .zbtn-xs { padding: 3px 9px; font-size: 11px; border-radius: 5px; }
+    .zbtn-danger { background: rgba(255,69,58,0.15); color: #ff453a; }
+    .zbtn-danger:hover:not(:disabled) { background: rgba(255,69,58,0.25); }
+
+    /* ── Badges ──────────────────────────────── */
+    .zbadge {
+      display: inline-flex; align-items: center;
+      padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 500;
+    }
+    .zbadge-blue   { background: rgba(41,151,255,0.15); color: #2997ff; }
+    .zbadge-green  { background: rgba(48,209,88,0.12); color: #30d158; }
+    .zbadge-yellow { background: rgba(255,214,10,0.12); color: #ffd60a; }
+    .zbadge-gray   { background: rgba(255,255,255,0.07); color: #86868b; }
+    .zbadge-purple { background: rgba(191,90,242,0.12); color: #bf5af2; }
+    .zbadge-red    { background: rgba(255,69,58,0.12); color: #ff453a; }
+
+    /* ── Table ───────────────────────────────── */
+    .ztable { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .ztable th {
+      text-align: left; font-size: 11px; font-weight: 600;
+      color: #86868b; text-transform: uppercase; letter-spacing: .05em;
+      padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .ztable td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .ztable tbody tr:hover { background: rgba(255,255,255,0.03); }
+    .ztable tbody tr:last-child td { border-bottom: none; }
+
+    /* ── Section label ───────────────────────── */
+    .zlabel {
+      font-size: 10px; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: #555;
+      padding: 8px 12px 4px;
+    }
+
+    /* ── Stat card ───────────────────────────── */
+    .zstat { text-align: center; padding: 24px 16px; }
+    .zstat-value { font-size: 32px; font-weight: 700; letter-spacing: -.02em; }
+    .zstat-label { font-size: 12px; color: #86868b; margin-top: 4px; }
+
+    /* ── Loading spinner ─────────────────────── */
+    .zspin {
+      width: 16px; height: 16px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.15);
+      border-top-color: #2997ff;
+      animation: spin .7s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Oxide grid ──────────────────────────── */
+    .oxide-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 6px;
+    }
+    .oxide-row { display: flex; align-items: center; gap: 6px; }
+    .oxide-label { font-size: 11px; font-family: 'SF Mono', monospace; color: #86868b; width: 54px; text-align: right; flex-shrink: 0; }
+    .oxide-input { flex: 1; }
+
+    /* ── Scrollbar ───────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+    /* ── Transitions ─────────────────────────── */
+    [x-cloak] { display: none !important; }
+
+    /* ── Alert ───────────────────────────────── */
+    .zalert { padding: 12px 16px; border-radius: 10px; font-size: 13px; display: flex; gap: 10px; align-items: flex-start; }
+    .zalert-info   { background: rgba(41,151,255,0.1); border: 1px solid rgba(41,151,255,0.2); color: #5aabff; }
+    .zalert-success{ background: rgba(48,209,88,0.1);  border: 1px solid rgba(48,209,88,0.2);  color: #30d158; }
+    .zalert-warn   { background: rgba(255,214,10,0.1); border: 1px solid rgba(255,214,10,0.2); color: #ffd60a; }
+    .zalert-error  { background: rgba(255,69,58,0.1);  border: 1px solid rgba(255,69,58,0.2);  color: #ff453a; }
+
+    /* ── Plotly ──────────────────────────────── */
+    .js-plotly-plot .plotly { border-radius: 12px; }
+    .modebar-container { display: none !important; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+
+<body>
+<!-- ── Sidebar ───────────────────────────────────────────────────────────── -->
+<nav id="sidebar">
+
+  <!-- Logo -->
+  <div style="padding:20px 16px 16px; border-bottom:1px solid rgba(255,255,255,0.07);">
+    <a href="/" style="text-decoration:none; display:flex; align-items:center; gap:10px;">
+      <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#2997ff,#0055cc);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:white;flex-shrink:0;">Z</div>
+      <div>
+        <div style="font-weight:700;font-size:14px;color:#f5f5f7;line-height:1.2">Zach V1</div>
+        <div style="font-size:10px;color:#555">Glass Informatics</div>
+      </div>
+    </a>
+  </div>
+
+  <!-- Navigation -->
+  <div style="flex:1;overflow-y:auto;padding:12px 8px;">
+    <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">
+      <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+      Dashboard
+    </a>
+    <a href="/explore" class="nav-link {% if request.path == '/explore' %}active{% endif %}">
+      <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      Explore Database
+    </a>
+    <a href="/add-glass" class="nav-link {% if request.path == '/add-glass' %}active{% endif %}">
+      <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      Add Glass
+    </a>
+
+    <div class="zlabel" style="margin-top:12px;">Analysis</div>
+
+    <a href="/viscosity" class="nav-link {% if request.path == '/viscosity' %}active{% endif %}">
+      <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      Viscosity Fitting
+    </a>
+    <a href="/predict" class="nav-link {% if request.path == '/predict' %}active{% endif %}">
+      <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      ML Prediction
+    </a>
+    <a href="/inverse" class="nav-link {% if request.path == '/inverse' %}active{% endif %}">
+      <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Inverse Design
+    </a>
+    <a href="/tools" class="nav-link {% if request.path == '/tools' %}active{% endif %}">
+      <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Theory Tools
+    </a>
+    <a href="/ternary" class="nav-link {% if request.path == '/ternary' %}active{% endif %}">
+      <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l9 16H3L12 3z"/></svg>
+      Ternary Diagram
+    </a>
+    <a href="/visualize" class="nav-link {% if request.path == '/visualize' %}active{% endif %}">
+      <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/><path stroke-linecap="round" stroke-linejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/></svg>
+      Scatter &amp; Histogram
+    </a>
+    <a href="/similar" class="nav-link {% if request.path == '/similar' %}active{% endif %}">
+      <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="9" r="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15" cy="15" r="5" stroke-linecap="round" stroke-linejoin="round"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12M6 12h12"/></svg>
+      Similarity Search
+    </a>
+
+    <div class="zlabel" style="margin-top:12px;">Services</div>
+
+    <a href="/contact" class="nav-link {% if request.path == '/contact' %}active{% endif %}">
+      <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+      Testing Services
+    </a>
+    <a href="/about" class="nav-link {% if request.path == '/about' %}active{% endif %}">
+      <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      About &amp; Credits
+    </a>
+  </div>
+
+  <!-- Footer -->
+  <div style="padding:12px 16px; border-top:1px solid rgba(255,255,255,0.07); font-size:10px; color:#444;">
+    © 2025 Zach V1 · SciGlass ODbL
+  </div>
+</nav>
+
+<!-- ── Main content ──────────────────────────────────────────────────────── -->
+<div id="main">
+
+  <!-- Top bar -->
+  <header style="position:sticky;top:0;z-index:30;background:rgba(0,0,0,0.75);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,0.07);padding:0 28px;height:52px;display:flex;align-items:center;justify-content:space-between;">
+    <h1 style="font-size:15px;font-weight:600;color:#f5f5f7;">{% block page_title %}Zach V1{% endblock %}</h1>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="font-size:11px;color:#444;">v1.0</span>
+      <a href="/contact" style="font-size:12px;color:#2997ff;text-decoration:none;font-weight:500;" onmouseover="this.style.color='#5aabff'" onmouseout="this.style.color='#2997ff'">Contact</a>
+    </div>
+  </header>
+
+  <!-- Page content -->
+  <main style="padding:28px 32px;">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<!-- ── Global JS ─────────────────────────────────────────────────────────── -->
+<script src="/static/js/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

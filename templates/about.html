@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}About & Credits — Zach V1{% endblock %}
+{% block page_title %}About & Credits{% endblock %}
+
+{% block content %}
+<div style="max-width:800px;margin:0 auto;">
+
+  <!-- About Zach V1 -->
+  <div class="zcard" style="margin-bottom:20px;">
+    <div class="zcard-body" style="padding:32px;">
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
+        <div style="width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,#2997ff,#0055cc);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:white;flex-shrink:0;">Z</div>
+        <div>
+          <div style="font-size:22px;font-weight:700;">Zach V1</div>
+          <div style="font-size:13px;color:#86868b;">Glass Informatics Platform · Version 1.0</div>
+        </div>
+      </div>
+      <p style="font-size:14px;color:#86868b;line-height:1.7;margin-bottom:16px;">
+        Zach V1 is a modern glass informatics platform built on top of the SciGlass database. It combines a clean interface for exploring 419,000+ glass compositions with machine-learning property prediction, viscosity model fitting, and inverse composition design — all running locally on your machine.
+      </p>
+      <p style="font-size:14px;color:#86868b;line-height:1.7;">
+        Designed for glass scientists, materials researchers, and process engineers who need fast, rigorous access to glass property data and computational tools.
+      </p>
+    </div>
+  </div>
+
+  <!-- Feature list -->
+  <div class="zcard" style="margin-bottom:20px;">
+    <div class="zcard-body" style="padding:28px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:16px;">What's included</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:12px;background:#1a1a1a;border-radius:10px;">
+          <span style="font-size:20px;">🔍</span>
+          <div><div style="font-size:13px;font-weight:600;margin-bottom:2px;">Database Explorer</div><div style="font-size:12px;color:#86868b;">Filter, view full compositions + properties, export CSV</div></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:12px;background:#1a1a1a;border-radius:10px;">
+          <span style="font-size:20px;">📈</span>
+          <div><div style="font-size:13px;font-weight:600;margin-bottom:2px;">Viscosity Fitting</div><div style="font-size:12px;color:#86868b;">MYEGA, VFT, AM models; Tg, fragility, working range</div></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:12px;background:#1a1a1a;border-radius:10px;">
+          <span style="font-size:20px;">🤖</span>
+          <div><div style="font-size:13px;font-weight:600;margin-bottom:2px;">ML Prediction</div><div style="font-size:12px;color:#86868b;">5 pre-built RF models; uncertainty quantification</div></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:12px;background:#1a1a1a;border-radius:10px;">
+          <span style="font-size:20px;">🎯</span>
+          <div><div style="font-size:13px;font-weight:600;margin-bottom:2px;">Inverse Design</div><div style="font-size:12px;color:#86868b;">LHS + Genetic Algorithm composition optimization</div></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:12px;background:#1a1a1a;border-radius:10px;">
+          <span style="font-size:20px;">⚗️</span>
+          <div><div style="font-size:13px;font-weight:600;margin-bottom:2px;">Theory Tools</div><div style="font-size:12px;color:#86868b;">NBO/T, optical basicity, constraint theory, batch calc</div></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:12px;background:#1a1a1a;border-radius:10px;">
+          <span style="font-size:20px;">➕</span>
+          <div><div style="font-size:13px;font-weight:600;margin-bottom:2px;">Add Your Data</div><div style="font-size:12px;color:#86868b;">Store experimental or simulation data locally</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SciGlass Credits -->
+  <div class="zcard" style="margin-bottom:20px;border-color:rgba(255,214,10,0.2);">
+    <div class="zcard-body" style="padding:28px;">
+      <div style="display:flex;gap:14px;align-items:flex-start;">
+        <div style="width:40px;height:40px;border-radius:8px;background:rgba(255,214,10,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span style="font-size:20px;">🏆</span>
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:4px;">Credits — SciGlass Database</div>
+          <div style="font-size:13px;color:#86868b;margin-bottom:8px;">Open Database License (ODbL) · EPAM Systems 2019</div>
+          <p style="font-size:13px;color:#86868b;line-height:1.7;margin-bottom:12px;">
+            The glass composition and property data powering this platform comes from the
+            <strong style="color:#f5f5f7;">SciGlass database</strong>, developed over decades
+            by scientists at EPAM Systems and its predecessors.
+            SciGlass is the world's largest curated database of inorganic glass properties,
+            containing data on over 400,000 glass compositions from scientific literature
+            published between 1920 and 2019.
+          </p>
+          <p style="font-size:13px;color:#86868b;line-height:1.7;margin-bottom:12px;">
+            The database is released under the
+            <strong style="color:#ffd60a;">Open Database License (ODbL)</strong>,
+            which permits free use, modification, and redistribution
+            — including for commercial purposes — provided attribution is given
+            and derivative databases are shared under the same license.
+          </p>
+          <div style="padding:12px 16px;background:#1a1a1a;border-radius:8px;font-size:12px;color:#555;font-family:monospace;line-height:1.6;">
+            Source: SciGlass database, EPAM Systems, 2019.<br>
+            License: Open Database License (ODbL) v1.0<br>
+            https://opendatacommons.org/licenses/odbl/
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Technology stack -->
+  <div class="zcard" style="margin-bottom:20px;">
+    <div class="zcard-body" style="padding:28px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Technology Stack</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <span class="zbadge zbadge-blue" style="padding:5px 12px;font-size:12px;">Python 3.13</span>
+        <span class="zbadge zbadge-blue" style="padding:5px 12px;font-size:12px;">Flask 3</span>
+        <span class="zbadge zbadge-green" style="padding:5px 12px;font-size:12px;">scikit-learn</span>
+        <span class="zbadge zbadge-green" style="padding:5px 12px;font-size:12px;">scipy</span>
+        <span class="zbadge zbadge-green" style="padding:5px 12px;font-size:12px;">pandas / numpy</span>
+        <span class="zbadge zbadge-purple" style="padding:5px 12px;font-size:12px;">Plotly.js</span>
+        <span class="zbadge zbadge-purple" style="padding:5px 12px;font-size:12px;">Alpine.js</span>
+        <span class="zbadge zbadge-gray" style="padding:5px 12px;font-size:12px;">SQLite</span>
+        <span class="zbadge zbadge-gray" style="padding:5px 12px;font-size:12px;">Tailwind CSS</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scientific methods -->
+  <div class="zcard">
+    <div class="zcard-body" style="padding:28px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:14px;">Scientific Methods</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;color:#86868b;">
+        <div>• <strong style="color:#f5f5f7;">MYEGA viscosity model</strong> — Mauro, Yue, Ellison, Gupta &amp; Allan (2009)</div>
+        <div>• <strong style="color:#f5f5f7;">VFT equation</strong> — Vogel (1921), Fulcher (1925), Tammann (1926)</div>
+        <div>• <strong style="color:#f5f5f7;">Optical basicity</strong> — Duffy &amp; Ingram (1971, 1975)</div>
+        <div>• <strong style="color:#f5f5f7;">NBO/T</strong> — Mysen, Richet (2005)</div>
+        <div>• <strong style="color:#f5f5f7;">Topological constraint theory</strong> — Phillips (1979), Thorpe (1983)</div>
+        <div>• <strong style="color:#f5f5f7;">Bond strength classification</strong> — Zachariasen (1932), Sun (1947)</div>
+        <div>• <strong style="color:#f5f5f7;">Avramov-Milchev model</strong> — Avramov &amp; Milchev (1988)</div>
+        <div>• <strong style="color:#f5f5f7;">Random Forest regression</strong> — Breiman (2001)</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

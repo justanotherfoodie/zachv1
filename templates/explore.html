@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Explore — Zach V1{% endblock %}
+{% block page_title %}Database Explorer{% endblock %}
+
+{% block content %}
+<div x-data="explorer()">
+
+  <!-- ── Filter bar ──────────────────────────────────────────────────────── -->
+  <div class="zcard" style="margin-bottom:18px;">
+    <div class="zcard-body">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;align-items:end;">
+
+        <!-- Oxide filter -->
+        <div>
+          <label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">Oxide</label>
+          <select x-model="newOx" class="zinput">
+            {% for oxide in oxides %}<option>{{ oxide }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">Range (mol%)</label>
+          <div style="display:flex;gap:5px;">
+            <input x-model="newLo" type="number" step="0.1" placeholder="min" class="zinput">
+            <input x-model="newHi" type="number" step="0.1" placeholder="max" class="zinput">
+          </div>
+        </div>
+        <div style="align-self:end;">
+          <button @click="addOxFilter()" class="zbtn zbtn-secondary zbtn-sm" style="width:100%;">+ Oxide Filter</button>
+        </div>
+
+        <!-- Property filter -->
+        <div>
+          <label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">Property</label>
+          <input x-model="newProp" type="text" placeholder="e.g. density" class="zinput">
+        </div>
+        <div>
+          <label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">Property range</label>
+          <div style="display:flex;gap:5px;">
+            <input x-model="newPropLo" type="number" step="any" placeholder="min" class="zinput">
+            <input x-model="newPropHi" type="number" step="any" placeholder="max" class="zinput">
+          </div>
+        </div>
+        <div style="align-self:end;">
+          <button @click="addPropFilter()" class="zbtn zbtn-secondary zbtn-sm" style="width:100%;">+ Property Filter</button>
+        </div>
+
+        <!-- Comp type + limit -->
+        <div>
+          <label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">Comp. Type</label>
+          <select x-model="compType" class="zinput">
+            <option value="">Any</option>
+            <option value="mol_pct">mol%</option>
+            <option value="wt_pct">wt%</option>
+            <option value="at_pct">at%</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">Results per page</label>
+          <select x-model="limit" class="zinput">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <div style="align-self:end;display:flex;gap:6px;">
+          <button @click="search(0)" class="zbtn zbtn-primary zbtn-sm" :disabled="loading" style="flex:1;">
+            <span x-show="loading" class="zspin" style="width:12px;height:12px;"></span>
+            Search
+          </button>
+          <button @click="exportCSV()" class="zbtn zbtn-secondary zbtn-sm" title="Export CSV">↓</button>
+          <button @click="reset()" class="zbtn zbtn-ghost zbtn-sm">Reset</button>
+        </div>
+      </div>
+
+      <!-- Active chips -->
+      <div x-show="oxFilters.length||propFilters.length" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;">
+        <template x-for="(f,i) in oxFilters" :key="'ox'+i">
+          <span class="zbadge zbadge-blue" style="cursor:pointer;" @click="oxFilters.splice(i,1)">
+            <span x-text="`${f[0]}: ${f[1]}–${f[2]}%`"></span> ×
+          </span>
+        </template>
+        <template x-for="(f,i) in propFilters" :key="'pr'+i">
+          <span class="zbadge zbadge-green" style="cursor:pointer;" @click="propFilters.splice(i,1)">
+            <span x-text="`${f[0]}: ${f[1]}–${f[2]}`"></span> ×
+          </span>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Results ─────────────────────────────────────────────────────────── -->
+  <div x-show="rows.length||searched">
+
+    <!-- Header row with pagination -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <span style="font-size:13px;color:#86868b;">
+        <span x-text="total.toLocaleString()"></span> glasses found
+        <span x-show="total>parseInt(limit)" x-text="` · showing ${offset+1}–${Math.min(offset+parseInt(limit),total)}`"></span>
+      </span>
+      <div x-show="total>parseInt(limit)" style="display:flex;gap:6px;align-items:center;">
+        <button @click="prevPage()" class="zbtn zbtn-secondary zbtn-sm" :disabled="offset===0">← Prev</button>
+        <span style="font-size:12px;color:#86868b;" x-text="`Page ${Math.floor(offset/parseInt(limit))+1} of ${Math.ceil(total/parseInt(limit))}`"></span>
+        <button @click="nextPage()" class="zbtn zbtn-secondary zbtn-sm" :disabled="offset+parseInt(limit)>=total">Next →</button>
+      </div>
+    </div>
+
+    <!-- Results cards -->
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <template x-for="row in rows" :key="row.id">
+        <div class="zcard zcard-sm" style="cursor:pointer;" @click="row._open=!row._open">
+          <!-- Summary row -->
+          <div class="zcard-body" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div style="min-width:60px;">
+              <div style="font-size:10px;color:#555;margin-bottom:2px;">ID</div>
+              <div style="font-family:monospace;font-size:13px;color:#2997ff;font-weight:600;" x-text="row.id"></div>
+            </div>
+            <div style="min-width:70px;">
+              <div style="font-size:10px;color:#555;margin-bottom:2px;">Type</div>
+              <span class="zbadge zbadge-gray" style="font-size:11px;" x-text="row.comp_type||'—'"></span>
+            </div>
+            <div style="flex:1;min-width:200px;">
+              <div style="font-size:10px;color:#555;margin-bottom:4px;">Composition</div>
+              <div style="display:flex;flex-wrap:wrap;gap:3px;">
+                <template x-for="c in (row.compositions||[]).filter(c=>c.value>0.5).slice(0,8)" :key="c.oxide">
+                  <span class="zbadge zbadge-blue" style="font-size:10px;" x-text="`${c.oxide} ${c.value.toFixed(1)}`"></span>
+                </template>
+                <span x-show="(row.compositions||[]).filter(c=>c.value>0.5).length>8" class="zbadge zbadge-gray" style="font-size:10px;"
+                      x-text="`+${(row.compositions||[]).filter(c=>c.value>0.5).length-8} more`"></span>
+              </div>
+            </div>
+            <div style="flex:1;min-width:200px;">
+              <div style="font-size:10px;color:#555;margin-bottom:4px;">Properties</div>
+              <div style="display:flex;flex-wrap:wrap;gap:3px;">
+                <template x-for="p in (row.properties||[]).slice(0,4)" :key="p.property_name">
+                  <span class="zbadge zbadge-green" style="font-size:10px;" x-text="`${p.property_name.replace(/_/g,' ')}: ${typeof p.value==='number'?p.value.toFixed(3):p.value}`"></span>
+                </template>
+                <span x-show="(row.properties||[]).length>4" class="zbadge zbadge-gray" style="font-size:10px;"
+                      x-text="`+${(row.properties||[]).length-4} more`"></span>
+                <span x-show="!(row.properties||[]).length" style="font-size:11px;color:#555;">—</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <a :href="`/glass/${row.id}`" @click.stop class="zbtn zbtn-primary zbtn-xs">View</a>
+              <span style="font-size:12px;color:#555;" x-text="row._open?'▲':'▼'"></span>
+            </div>
+          </div>
+
+          <!-- Expanded detail -->
+          <div x-show="row._open" style="padding:0 16px 16px;">
+            <div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+              <!-- Full composition table -->
+              <div>
+                <div style="font-size:11px;color:#86868b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Full Composition</div>
+                <table class="ztable" style="font-size:12px;">
+                  <thead><tr><th>Oxide</th><th>Value</th><th>Type</th></tr></thead>
+                  <tbody>
+                    <template x-for="c in (row.compositions||[]).filter(c=>c.value>0)" :key="c.oxide">
+                      <tr>
+                        <td style="font-family:monospace;" x-text="c.oxide"></td>
+                        <td style="font-weight:500;" x-text="c.value.toFixed(3)"></td>
+                        <td style="color:#555;" x-text="c.comp_type||''"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- All properties table -->
+              <div>
+                <div style="font-size:11px;color:#86868b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">All Properties</div>
+                <div x-show="!(row.properties||[]).length" style="font-size:12px;color:#555;">No property data available</div>
+                <div style="max-height:250px;overflow-y:auto;">
+                  <table class="ztable" style="font-size:12px;">
+                    <thead><tr><th>Property</th><th>Value</th><th>Unit</th></tr></thead>
+                    <tbody>
+                      <template x-for="p in row.properties||[]" :key="p.property_name+p.value">
+                        <tr>
+                          <td x-text="p.property_name.replace(/_/g,' ')"></td>
+                          <td style="font-family:monospace;font-weight:500;" x-text="typeof p.value==='number'?p.value.toFixed(4):p.value"></td>
+                          <td style="color:#555;" x-text="p.unit||''"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Bottom pagination -->
+    <div x-show="total>parseInt(limit)" style="display:flex;justify-content:center;gap:8px;margin-top:20px;">
+      <button @click="search(0)" class="zbtn zbtn-secondary zbtn-sm" :disabled="offset===0">«</button>
+      <button @click="prevPage()" class="zbtn zbtn-secondary zbtn-sm" :disabled="offset===0">‹ Prev</button>
+      <span class="zbtn zbtn-ghost zbtn-sm" x-text="`Page ${Math.floor(offset/parseInt(limit))+1} / ${Math.ceil(total/parseInt(limit))}`"></span>
+      <button @click="nextPage()" class="zbtn zbtn-secondary zbtn-sm" :disabled="offset+parseInt(limit)>=total">Next ›</button>
+      <button @click="search(Math.floor((total-1)/parseInt(limit))*parseInt(limit))" class="zbtn zbtn-secondary zbtn-sm" :disabled="offset+parseInt(limit)>=total">»</button>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div x-show="!searched" style="text-align:center;padding:80px 32px;color:#444;">
+    <div style="font-size:48px;margin-bottom:16px;">🔬</div>
+    <div style="font-size:18px;font-weight:500;margin-bottom:8px;">Set filters and click Search</div>
+    <div style="font-size:13px;">Or leave filters empty to browse all 419,377 glasses</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function explorer() {
+  return {
+    newOx:'SiO2', newLo:'', newHi:'',
+    newProp:'', newPropLo:'', newPropHi:'',
+    compType:'', limit:50, offset:0,
+    oxFilters:[], propFilters:[],
+    rows:[], total:0, loading:false, searched:false,
+
+    addOxFilter() {
+      if (!this.newLo||!this.newHi) return;
+      this.oxFilters.push([this.newOx, parseFloat(this.newLo), parseFloat(this.newHi)]);
+      this.newLo=''; this.newHi='';
+    },
+    addPropFilter() {
+      if (!this.newProp||!this.newPropLo||!this.newPropHi) return;
+      this.propFilters.push([this.newProp, parseFloat(this.newPropLo), parseFloat(this.newPropHi)]);
+      this.newProp=''; this.newPropLo=''; this.newPropHi='';
+    },
+
+    async search(off=null) {
+      this.loading=true; this.searched=true;
+      if (off !== null) this.offset = off;
+      const res = await fetch('/api/search',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          oxide_filters:  this.oxFilters.length?this.oxFilters:null,
+          prop_filters:   this.propFilters.length?this.propFilters:null,
+          comp_type:      this.compType||null,
+          limit:          parseInt(this.limit),
+          offset:         this.offset,
+          include_details:true,
+        })
+      });
+      const j = await res.json();
+      if(j.ok){ this.rows=j.data.rows; this.total=j.data.total; }
+      this.loading=false;
+      window.scrollTo({top:0,behavior:'smooth'});
+    },
+
+    prevPage() { if(this.offset>0) this.search(Math.max(0,this.offset-parseInt(this.limit))); },
+    nextPage() { if(this.offset+parseInt(this.limit)<this.total) this.search(this.offset+parseInt(this.limit)); },
+
+    async exportCSV() {
+      const res = await fetch('/api/export/search',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          oxide_filters:this.oxFilters.length?this.oxFilters:null,
+          prop_filters:this.propFilters.length?this.propFilters:null,
+          comp_type:this.compType||null,
+        })
+      });
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href=URL.createObjectURL(blob); a.download='zachv1_export.csv'; a.click();
+    },
+
+    reset() {
+      this.oxFilters=[]; this.propFilters=[]; this.compType='';
+      this.rows=[]; this.total=0; this.searched=false; this.offset=0;
+    }
+  };
+}
+</script>
+{% endblock %}

@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %}Inverse Design — Zach V1{% endblock %}
+{% block page_title %}Inverse Glass Design{% endblock %}
+
+{% block content %}
+<div x-data="inverseDesign()" style="display:flex;flex-direction:column;gap:16px;">
+
+  <!-- ── Info banner ─────────────────────────────────────────────────────── -->
+  <div class="zalert zalert-info" style="font-size:13px;">
+    <svg style="width:18px;height:18px;flex-shrink:0;color:#2997ff;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <div>Define <strong>oxide composition ranges</strong> and <strong>property targets</strong>. The solver (LHS + Genetic Algorithm) will find compositions meeting all constraints using trained ML models.</div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:300px 1fr;gap:18px;">
+
+    <!-- ── Left: Setup ──────────────────────────────────────────────────── -->
+    <div style="display:flex;flex-direction:column;gap:14px;">
+
+      <!-- Oxide ranges -->
+      <div class="zcard">
+        <div class="zcard-body">
+          <div style="font-size:15px;font-weight:600;margin-bottom:6px;">Oxide Composition Ranges</div>
+          <div style="font-size:12px;color:#86868b;margin-bottom:12px;">Set the search space. Compositions are normalised to 100%.</div>
+
+          <!-- Quick presets -->
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+            <button @click="loadPreset('sodalime')"    class="zbtn zbtn-ghost zbtn-xs">Soda-lime</button>
+            <button @click="loadPreset('borosilicate')" class="zbtn zbtn-ghost zbtn-xs">Borosilicate</button>
+            <button @click="loadPreset('phosphate')"   class="zbtn zbtn-ghost zbtn-xs">Phosphate</button>
+          </div>
+
+          <!-- Add oxide range -->
+          <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+            <select x-model="newRangeOx" class="zinput" style="width:90px;padding:5px 8px;font-size:12px;">
+              {% for oxide in oxides %}
+              <option>{{ oxide }}</option>
+              {% endfor %}
+            </select>
+            <input x-model.number="newRangeLo" type="number" min="0" max="100" step="0.5" placeholder="min" class="zinput" style="width:62px;padding:5px 8px;font-size:12px;">
+            <input x-model.number="newRangeHi" type="number" min="0" max="100" step="0.5" placeholder="max" class="zinput" style="width:62px;padding:5px 8px;font-size:12px;">
+            <button @click="addRange()" class="zbtn zbtn-primary zbtn-xs">+</button>
+          </div>
+
+          <div style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
+            <template x-for="(r, ox) in oxideRanges" :key="ox">
+              <div style="display:flex;align-items:center;gap:6px;background:#1a1a1a;border-radius:7px;padding:5px 8px;">
+                <span style="font-family:monospace;font-size:12px;width:54px;flex-shrink:0;" x-text="ox"></span>
+                <input type="number" :value="r[0]" @input="oxideRanges[ox]=[parseFloat($event.target.value)||0,r[1]]" min="0" max="100" step="0.5" class="zinput" style="width:52px;padding:3px 6px;font-size:11px;">
+                <span style="font-size:12px;color:#555;">–</span>
+                <input type="number" :value="r[1]" @input="oxideRanges[ox]=[r[0],parseFloat($event.target.value)||100]" min="0" max="100" step="0.5" class="zinput" style="width:52px;padding:3px 6px;font-size:11px;">
+                <button @click="removeRange(ox)" class="zbtn zbtn-ghost zbtn-xs" style="color:#ff453a;margin-left:auto;">×</button>
+              </div>
+            </template>
+            <div x-show="Object.keys(oxideRanges).length===0" style="font-size:12px;color:#444;text-align:center;padding:12px;">No oxide ranges defined</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Property targets -->
+      <div class="zcard">
+        <div class="zcard-body">
+          <div style="font-size:15px;font-weight:600;margin-bottom:12px;">Property Targets</div>
+          <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+            <input x-model="newTarget.prop"          type="text"   placeholder="density"  class="zinput" style="flex:1;min-width:80px;padding:5px 8px;font-size:12px;">
+            <input x-model.number="newTarget.value"  type="number" step="any" placeholder="target" class="zinput" style="width:72px;padding:5px 8px;font-size:12px;">
+            <input x-model.number="newTarget.tol"    type="number" step="any" placeholder="±tol"   class="zinput" style="width:58px;padding:5px 8px;font-size:12px;">
+            <button @click="addTarget()" class="zbtn zbtn-secondary zbtn-xs">+</button>
+          </div>
+
+          <!-- Quick targets -->
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
+            <button @click="addQuickTarget('density',     2.5, 0.1)"  class="zbtn zbtn-ghost zbtn-xs">ρ=2.5</button>
+            <button @click="addQuickTarget('tg_celsius',  550, 20)"   class="zbtn zbtn-ghost zbtn-xs">Tg=550°C</button>
+            <button @click="addQuickTarget('refractive_index_nD',1.52,0.02)" class="zbtn zbtn-ghost zbtn-xs">nD=1.52</button>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <template x-for="(t, i) in targets" :key="i">
+              <div style="display:flex;align-items:center;gap:8px;background:#1a1a1a;border-radius:7px;padding:6px 10px;font-size:12px;">
+                <span style="font-family:monospace;flex:1;" x-text="t.prop"></span>
+                <span style="color:#86868b;" x-text="t.target + ' ±' + t.tol"></span>
+                <button @click="targets.splice(i,1)" class="zbtn zbtn-ghost zbtn-xs" style="color:#ff453a;">×</button>
+              </div>
+            </template>
+            <div x-show="targets.length===0" style="font-size:12px;color:#444;text-align:center;padding:8px;">No targets defined</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Solver settings -->
+      <div class="zcard">
+        <div class="zcard-body" style="padding:16px 24px;">
+          <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Solver Settings</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+            <div>
+              <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Comp. type</div>
+              <select x-model="compType" class="zinput" style="padding:5px 8px;font-size:12px;">
+                <option value="mol_pct">mol%</option>
+                <option value="wt_pct">wt%</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#86868b;margin-bottom:4px;">ML model</div>
+              <select x-model="modelType" class="zinput" style="padding:5px 8px;font-size:12px;">
+                <option value="random_forest">Random Forest</option>
+                <option value="gradient_boosting">Gradient Boost</option>
+                <option value="extra_trees">Extra Trees</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#86868b;margin-bottom:4px;">LHS samples</div>
+              <input x-model.number="nLhs" type="number" min="500" max="10000" step="500" class="zinput" style="padding:5px 8px;font-size:12px;">
+            </div>
+            <div>
+              <div style="font-size:11px;color:#86868b;margin-bottom:4px;">GA generations</div>
+              <input x-model.number="gaGens" type="number" min="20" max="300" step="20" class="zinput" style="padding:5px 8px;font-size:12px;">
+            </div>
+            <div>
+              <div style="font-size:11px;color:#86868b;margin-bottom:4px;">Top results</div>
+              <input x-model.number="topN" type="number" min="5" max="50" step="5" class="zinput" style="padding:5px 8px;font-size:12px;">
+            </div>
+          </div>
+
+          <button @click="runSolver()" class="zbtn zbtn-primary" style="width:100%;"
+            :disabled="loading || Object.keys(oxideRanges).length < 2 || targets.length === 0">
+            <span x-show="loading" class="zspin" style="width:14px;height:14px;"></span>
+            <span x-show="!loading">🎯 Run Inverse Design</span>
+            <span x-show="loading">Optimising...</span>
+          </button>
+          <div x-show="error" class="zalert zalert-error" style="margin-top:10px;font-size:12px;" x-text="error"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Right: Results ──────────────────────────────────────────────────── -->
+    <div style="display:flex;flex-direction:column;gap:14px;">
+
+      <div x-show="!results && !loading" style="text-align:center;padding:80px 0;color:#444;">
+        <div style="font-size:56px;margin-bottom:16px;">🎯</div>
+        <p style="font-size:16px;">Set oxide ranges and property targets, then run the solver</p>
+      </div>
+
+      <div x-show="loading" style="text-align:center;padding:80px 0;">
+        <span class="zspin" style="width:48px;height:48px;"></span>
+        <p style="margin-top:20px;font-size:14px;color:#86868b;">Running LHS + Genetic Algorithm optimisation...</p>
+        <p style="font-size:12px;color:#555;margin-top:6px;">This may take 30–120 seconds depending on the search space</p>
+      </div>
+
+      <!-- Results table -->
+      <div x-show="results && results.length > 0" class="zcard">
+        <div class="zcard-body" style="padding:0;">
+          <div style="padding:18px 24px 10px;display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-size:15px;font-weight:600;" x-text="`Top ${results?.length ?? 0} Candidate Compositions`"></div>
+            <button @click="exportResults()" class="zbtn zbtn-ghost zbtn-xs">⬇ Export CSV</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="ztable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Composition</th>
+                  <template x-for="t in targets" :key="t.prop">
+                    <th x-text="t.prop.replace(/_/g,' ')"></th>
+                  </template>
+                  <th>Score</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="r in results" :key="r.rank">
+                  <tr style="cursor:pointer;" @click="selectResult(r)">
+                    <td style="font-weight:700;color:#2997ff;" x-text="r.rank"></td>
+                    <td>
+                      <div style="display:flex;flex-wrap:wrap;gap:4px;max-width:320px;">
+                        <template x-for="[ox,v] in Object.entries(r.composition)" :key="ox">
+                          <span class="zbadge zbadge-gray" style="font-size:10px;" x-text="`${ox}: ${v}`"></span>
+                        </template>
+                      </div>
+                    </td>
+                    <template x-for="t in targets" :key="t.prop">
+                      <td style="font-family:monospace;font-size:12px;"
+                        :style="Math.abs((r.predicted_properties[t.prop]||0)-t.target) <= t.tol ? 'color:#30d158' : 'color:#ffd60a'"
+                        x-text="r.predicted_properties[t.prop]?.toFixed(3) ?? '—'">
+                      </td>
+                    </template>
+                    <td style="font-size:12px;" x-text="r.score.toFixed(3)"></td>
+                    <td><button @click.stop="selectResult(r)" class="zbtn zbtn-ghost zbtn-xs">Detail</button></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Composition radar of selected result -->
+      <div x-show="selectedResult" class="zcard">
+        <div class="zcard-body">
+          <div style="font-size:15px;font-weight:600;margin-bottom:14px;" x-text="`Rank ${selectedResult?.rank} — Composition Detail`"></div>
+          <div id="radar-chart" style="height:280px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const INVERSE_PRESETS = {
+  sodalime:    {SiO2:[60,80],Na2O:[8,18],CaO:[5,15],MgO:[0,8],Al2O3:[0,5]},
+  borosilicate:{SiO2:[70,85],B2O3:[8,18],Na2O:[2,8],Al2O3:[1,6]},
+  phosphate:   {P2O5:[40,60],Al2O3:[10,25],CaO:[5,20],Na2O:[0,15]},
+};
+
+function inverseDesign() {
+  return {
+    oxideRanges: {SiO2:[60,80],Na2O:[8,18],CaO:[5,15],MgO:[0,8]},
+    targets: [],
+    newRangeOx: 'SiO2', newRangeLo: 0, newRangeHi: 100,
+    newTarget: {prop:'',value:'',tol:''},
+    compType: 'mol_pct', modelType: 'random_forest',
+    nLhs: 2000, gaGens: 80, topN: 20,
+    results: null, selectedResult: null,
+    loading: false, error: '',
+
+    addRange() {
+      if (this.newRangeLo===''||this.newRangeHi==='') return;
+      this.oxideRanges[this.newRangeOx] = [this.newRangeLo, this.newRangeHi];
+    },
+    removeRange(ox) { delete this.oxideRanges[ox]; },
+
+    addTarget() {
+      if (!this.newTarget.prop||this.newTarget.value==='') return;
+      this.targets.push({...this.newTarget, tol: this.newTarget.tol||Math.abs(this.newTarget.value)*0.1});
+      this.newTarget = {prop:'',value:'',tol:''};
+    },
+    addQuickTarget(prop, value, tol) { this.targets.push({prop, target:value, tol}); },
+
+    loadPreset(name) { this.oxideRanges = {...INVERSE_PRESETS[name]}; },
+
+    async runSolver() {
+      this.loading=true; this.error=''; this.results=null;
+      try {
+        const payload = {
+          oxide_ranges: Object.fromEntries(Object.entries(this.oxideRanges).map(([k,v])=>[k,[v[0],v[1]]])),
+          targets: this.targets.map(t=>({prop:t.prop,target:parseFloat(t.target),tolerance:parseFloat(t.tol),weight:1.0})),
+          comp_type: this.compType,
+          model_type: this.modelType,
+          n_lhs: this.nLhs,
+          ga_generations: this.gaGens,
+          top_n: this.topN,
+        };
+        const res = await fetch('/api/inverse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        const j = await res.json();
+        if (j.ok) { this.results=j.data; if(j.data[0]) this.selectResult(j.data[0]); }
+        else this.error=j.error;
+      } catch(e) { this.error=e.message; }
+      this.loading=false;
+    },
+
+    selectResult(r) {
+      this.selectedResult=r;
+      this.drawRadar(r);
+    },
+
+    drawRadar(r) {
+      const oxides=Object.keys(r.composition);
+      const values=oxides.map(ox=>r.composition[ox]);
+      Plotly.react('radar-chart',[{
+        type:'scatterpolar',fill:'toself',mode:'lines+markers',
+        r:[...values,values[0]],theta:[...oxides,oxides[0]],
+        line:{color:'#2997ff',width:2},
+        fillcolor:'rgba(41,151,255,0.1)',
+        name:`Rank ${r.rank}`,
+      }],{
+        polar:{radialaxis:{visible:true,range:[0,Math.max(...values)*1.1],gridcolor:'rgba(255,255,255,0.06)'},bgcolor:'transparent'},
+        paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+        font:{color:'#86868b',size:10},
+        margin:{l:60,r:60,t:30,b:30},
+      },{responsive:true,displayModeBar:false});
+    },
+
+    exportResults() {
+      if (!this.results) return;
+      const rows=this.results.map(r=>({
+        rank:r.rank, score:r.score,
+        ...Object.fromEntries(Object.entries(r.composition).map(([k,v])=>[k+'_mol_pct',v])),
+        ...Object.fromEntries(Object.entries(r.predicted_properties).map(([k,v])=>['pred_'+k,v])),
+      }));
+      const keys=Object.keys(rows[0]);
+      const csv=[keys.join(','),...rows.map(r=>keys.map(k=>r[k]??'').join(','))].join('\n');
+      const blob=new Blob([csv],{type:'text/csv'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download='inverse_results.csv'; a.click();
+      URL.revokeObjectURL(url);
+    },
+  };
+}
+</script>
+{% endblock %}
